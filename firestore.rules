@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in [
+          "usuario1@charlyalexa.com"
+        ];
+    }
+
+    function isPublicOrderCreate() {
+      return request.resource.data.keys().hasAll([
+        "customerName",
+        "customerPhone",
+        "deliveryMethod",
+        "items",
+        "total",
+        "totalItems",
+        "status",
+        "source",
+        "createdAt",
+        "updatedAt"
+      ])
+      && request.resource.data.status == "Nuevo"
+      && request.resource.data.source == "web"
+      && request.resource.data.items is list
+      && request.resource.data.total is number
+      && request.resource.data.totalItems is number;
+    }
+
+    function isCheckoutStockUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "stock",
+        "stockBySize",
+        "updatedAt"
+      ])
+      && request.resource.data.stock is number
+      && request.resource.data.stock >= 0
+      && request.resource.data.stock <= resource.data.stock
+      && request.resource.data.stockBySize is list;
+    }
+
+    match /products/{productId} {
+      allow read: if isAdmin() || resource.data.isActive == true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || isCheckoutStockUpdate();
+    }
+
+    match /orders/{orderId} {
+      allow create: if isAdmin() || isPublicOrderCreate();
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /storeSales/{saleId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /stockMovements/{movementId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        || (
+          request.resource.data.type == "web_order"
+          && request.resource.data.quantityChange is number
+          && request.resource.data.quantityChange < 0
+        );
+      allow update, delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isAdmin() || resource.data.isActive == true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /subcategories/{subcategoryId} {
+      allow read: if isAdmin() || resource.data.isActive == true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /homepage/{documentId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /siteSettings/{documentId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

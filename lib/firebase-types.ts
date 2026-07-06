@@ -1,0 +1,151 @@
+import type { Timestamp } from "firebase/firestore";
+
+export type FirebaseDate = Timestamp | Date | string | null;
+
+export type ProductStatus = "active" | "inactive" | "draft" | "archived";
+
+export type WholesaleMode = "none" | "surtido" | "producto";
+
+export type MainCategoryName = "Niña" | "Niño" | "Unisex";
+
+export type HomeSection = "ofertas" | "novedades" | "temporada" | null;
+
+export type OrderStatus =
+  | "Nuevo"
+  | "Confirmado"
+  | "Preparando"
+  | "Listo para entregar"
+  | "Entregado"
+  | "Cancelado"
+  | "pending"
+  | "confirmed"
+  | "preparing"
+  | "ready"
+  | "delivered"
+  | "cancelled";
+
+export type DeliveryMethod = "Recoger en tienda" | "Envío a domicilio";
+
+export type ProductSizeStock = {
+  size: string;
+  stock: number;
+};
+
+export type FirebaseProduct = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  longDescription: string;
+  category: MainCategoryName;
+  subcategory: string;
+  price: number;
+  basePrice?: number;
+  sizes: string[];
+  colors: string[];
+  stock: number;
+  stockBySize: ProductSizeStock[];
+  images: string[];
+  mainImage: string;
+  isOffer: boolean;
+  isNew: boolean;
+  isSeasonal: boolean;
+  isActive: boolean;
+  isFeatured: boolean;
+  featuredOrder: number;
+  showOnHome: boolean;
+  homeSection: HomeSection;
+  status?: ProductStatus;
+  wholesaleMode: WholesaleMode;
+  wholesaleMinQuantity: number;
+  wholesaleNote?: string;
+  createdAt: FirebaseDate;
+  updatedAt: FirebaseDate;
+};
+
+export type FirebaseCategory = {
+  id: string;
+  name: MainCategoryName;
+  slug: string;
+  imageUrl?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: FirebaseDate;
+  updatedAt: FirebaseDate;
+};
+
+export type FirebaseSubcategory = {
+  id: string;
+  name: string;
+  slug: string;
+  parentCategory: MainCategoryName;
+  imageUrl?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt: FirebaseDate;
+  updatedAt: FirebaseDate;
+};
+
+export type FirebaseOrderItem = {
+  productId: string;
+  slug: string;
+  name?: string;
+  productName?: string;
+  category?: MainCategoryName;
+  subcategory?: string;
+  size: string;
+  color?: string;
+  image?: string;
+  mainImage?: string;
+  price: number;
+  quantity: number;
+  subtotal: number;
+  wholesaleType?: WholesaleMode;
+  wholesaleMinimum?: number;
+};
+
+export type FirebaseCustomer = {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  createdAt: FirebaseDate;
+  updatedAt: FirebaseDate;
+};
+
+export type FirebaseOrder = {
+  id: string;
+  orderNumber?: string;
+  customerId?: string;
+  customer?: Omit<FirebaseCustomer, "id" | "createdAt" | "updatedAt">;
+  customerName?: string;
+  customerPhone?: string;
+  deliveryMethod?: DeliveryMethod;
+  address?: string;
+  items: FirebaseOrderItem[];
+  subtotal: number;
+  shippingCost?: number;
+  total: number;
+  totalItems?: number;
+  status: OrderStatus;
+  source?: "web" | "store" | string;
+  inventoryReturned?: boolean;
+  inventoryReturnedAt?: FirebaseDate;
+  inventoryReturnedBy?: string;
+  isDeleted?: boolean;
+  deletedAt?: FirebaseDate;
+  deletedBy?: string | null;
+  wholesaleValidation?: {
+    canCheckout?: boolean;
+    messages?: string[];
+    missingSurtido?: number;
+    missingByProduct?: { productName: string; missing: number }[];
+  };
+  notes?: string;
+  createdAt: FirebaseDate;
+  updatedAt: FirebaseDate;
+};
+
+export type PaymentMethod = "Efectivo" | "Transferencia" | "Tarjeta" | "Otro";

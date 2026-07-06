@@ -1,0 +1,167 @@
+"use client";
+
+import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import { FirebaseError } from "firebase/app";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { LockKeyhole, LogIn } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { FormEvent, useState } from "react";
+import { toast } from "sonner";
+
+function getLoginMessage(error: unknown) {
+  if (error instanceof FirebaseError) {
+    console.error("Admin login error:", {
+      code: error.code,
+      message: error.message,
+      customData: error.customData,
+    });
+
+    if (error.code === "auth/invalid-credential") {
+      return "Correo o contraseña incorrectos. Revisa los datos e intenta de nuevo.";
+    }
+
+    if (error.code === "auth/user-not-found") {
+      return "Este correo no tiene acceso al panel.";
+    }
+
+    if (error.code === "auth/wrong-password") {
+      return "La contraseña no coincide con este correo.";
+    }
+
+    if (error.code === "auth/operation-not-allowed") {
+      return "El acceso del panel no está listo. Contacta a quien configuró la tienda.";
+    }
+
+    if (error.code === "auth/unauthorized-domain") {
+      return "Este navegador no tiene acceso al panel por el momento.";
+    }
+
+    if (error.code === "auth/api-key-not-valid") {
+      return "El acceso del panel no está listo. Contacta a quien configuró la tienda.";
+    }
+
+    if (error.code === "auth/too-many-requests") {
+      return "Hay demasiados intentos. Espera unos minutos y vuelve a intentar.";
+    }
+
+    return "No se pudo iniciar sesión. Intenta de nuevo.";
+  }
+
+  console.error("Unknown login error:", error);
+  return "No se pudo iniciar sesión. Intenta de nuevo.";
+}
+
+export default function AdminLoginPage() {
+  const router = useRouter();
+
+  const [email, setEmail] = useState("usuario1@charlyalexa.com");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+
+    if (!isFirebaseConfigured || !auth) {
+      setError(
+        "El acceso del panel todavía no está listo. Contacta a quien configuró la tienda."
+      );
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+
+      toast.success("Sesión iniciada");
+      router.replace("/admin");
+    } catch (loginError) {
+      const message = getLoginMessage(loginError);
+      setError(message);
+      toast.error("No se pudo iniciar sesión");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#fffaf5] px-4 py-10 text-slate-900">
+      <section className="w-full max-w-md rounded-[2rem] bg-white p-5 shadow-sm ring-1 ring-rose-100 sm:p-7">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 ring-1 ring-rose-100">
+            <LockKeyhole size={24} />
+          </div>
+
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-rose-500">
+              Charly Alexa
+            </p>
+
+            <h1 className="mt-1 text-2xl font-black text-slate-950">
+              Panel vendedor
+            </h1>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+          <label className="block space-y-2">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">
+              Correo
+            </span>
+
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className="w-full rounded-2xl border border-rose-100 bg-[#fffaf5] px-4 py-3 text-sm font-bold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-4 focus:ring-rose-100"
+              placeholder="vendedor@charlyalexa.com"
+              autoComplete="email"
+              required
+            />
+          </label>
+
+          <label className="block space-y-2">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">
+              Contraseña
+            </span>
+
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="w-full rounded-2xl border border-rose-100 bg-[#fffaf5] px-4 py-3 text-sm font-bold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-4 focus:ring-rose-100"
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+
+          {error && (
+            <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold leading-5 text-rose-700">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            <LogIn size={17} />
+            {isSubmitting ? "Entrando..." : "Entrar"}
+          </button>
+        </form>
+
+        <Link
+          href="/"
+          className="mt-5 block text-center text-xs font-black uppercase tracking-wide text-slate-400 transition hover:text-rose-500"
+        >
+          Volver a la tienda
+        </Link>
+      </section>
+    </main>
+  );
+}
