@@ -87,12 +87,12 @@ export const shoppingBenefits = [
     description: "Elige la talla en cada producto antes de agregar al carrito.",
   },
   {
-    title: "Pedido por WhatsApp",
-    description: "El resumen sale listo con productos, tallas y total.",
+    title: "Pedido en línea",
+    description: "El resumen queda listo con productos, tallas, envío y total.",
   },
   {
-    title: "Recoge o solicita envío",
-    description: "Confirma disponibilidad y entrega directa con la tienda.",
+    title: "Envío nacional",
+    description: "Tu pedido se envía a la dirección indicada.",
   },
 ];
 
@@ -154,9 +154,9 @@ export const productVisualImages = {
 } as const;
 
 export const paymentMethods = [
+  "Pago en línea seguro",
   "Transferencia bancaria",
-  "Pago en tienda",
-  "Pagos seguros por Mercado Pago o Stripe, si se activa",
+  "Acordar por WhatsApp",
 ];
 
 export const policyLinks = [

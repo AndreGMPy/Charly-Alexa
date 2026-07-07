@@ -272,12 +272,6 @@ Observaciones:`;
               <p className="text-4xl font-black text-slate-950 sm:text-5xl">
                 {formatPrice(product.price)}
               </p>
-
-              {product.basePrice && product.basePrice > product.price && (
-                <p className="pb-1 text-base font-bold text-slate-400 line-through sm:pb-2 sm:text-lg">
-                  {formatPrice(product.basePrice)}
-                </p>
-              )}
             </div>
 
             {hasWholesale && (
@@ -437,7 +431,7 @@ Observaciones:`;
                 <Truck className="mb-2 text-sky-500" size={18} />
                 <p className="text-xs font-black sm:text-sm">Entrega</p>
                 <p className="mt-1 hidden text-xs text-slate-500 sm:block">
-                  En tienda o envío
+                  Envío nacional
                 </p>
               </div>
 

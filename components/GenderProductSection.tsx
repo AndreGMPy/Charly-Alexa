@@ -1,9 +1,13 @@
 "use client";
 
-import ProductCard from "@/components/ProductCard";
+import ProductCard, { ProductCardSkeleton } from "@/components/ProductCard";
 import { getSubcategoriesByCategory } from "@/lib/firebase-services/categories";
-import { getActiveProducts } from "@/lib/firebase-services/products";
+import {
+  getActiveProducts,
+  getCachedActiveProducts,
+} from "@/lib/firebase-services/products";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
+import type { FirebaseProduct } from "@/lib/firebase-types";
 import type { Product } from "@/lib/products";
 import { Filter, SlidersHorizontal, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -61,6 +65,28 @@ const colors = [
 
 const priceOptions = ["Todos", "Menos de $250", "$250 a $400", "Más de $400"];
 
+function belongsToAudience(
+  product: { category: Product["category"] | FirebaseProduct["category"] },
+  title: "Niña" | "Niño"
+) {
+  return product.category === title || product.category === "Unisex";
+}
+
+function getInitialCatalogProducts(
+  title: "Niña" | "Niño",
+  fallbackProducts: Product[]
+) {
+  const cachedProducts = getCachedActiveProducts();
+
+  if (cachedProducts.length > 0) {
+    return cachedProducts
+      .filter((product) => belongsToAudience(product, title))
+      .map(mapFirebaseProductToProduct);
+  }
+
+  return fallbackProducts;
+}
+
 export default function GenderProductSection({
   id,
   title,
@@ -73,7 +99,13 @@ export default function GenderProductSection({
   const [selectedFilter, setSelectedFilter] = useState<FilterOption | null>(
     null
   );
-  const [catalogProducts, setCatalogProducts] = useState(products);
+  const [catalogProducts, setCatalogProducts] = useState(() =>
+    getInitialCatalogProducts(title, products)
+  );
+  const [isLoadingProducts, setIsLoadingProducts] = useState(
+    () => getCachedActiveProducts().length === 0 && products.length === 0
+  );
+  const [loadError, setLoadError] = useState(false);
   const [filters, setFilters] = useState<FilterOption[]>(
     title === "Niña" ? girlFilters : boyFilters
   );
@@ -110,18 +142,28 @@ export default function GenderProductSection({
     let isCurrent = true;
 
     async function loadProducts() {
+      if (catalogProducts.length === 0) {
+        setIsLoadingProducts(true);
+      }
+
       try {
         const firebaseProducts = await getActiveProducts();
         const audienceProducts = firebaseProducts.filter(
-          (product) =>
-            product.category === title || product.category === "Unisex"
+          (product) => belongsToAudience(product, title)
         );
 
-        if (!isCurrent || audienceProducts.length === 0) return;
+        if (!isCurrent) return;
 
         setCatalogProducts(audienceProducts.map(mapFirebaseProductToProduct));
+        setLoadError(false);
       } catch {
-        // Keep the local catalog if saved products are not available.
+        if (isCurrent) {
+          setLoadError(true);
+        }
+      } finally {
+        if (isCurrent) {
+          setIsLoadingProducts(false);
+        }
       }
     }
 
@@ -130,14 +172,16 @@ export default function GenderProductSection({
     return () => {
       isCurrent = false;
     };
-  }, [title]);
+  }, [catalogProducts.length, title]);
 
   useEffect(() => {
     let isCurrent = true;
 
     async function loadSubcategoryFilters() {
       try {
-        const savedSubcategories = await getSubcategoriesByCategory(title);
+        const savedSubcategories = await getSubcategoriesByCategory(title, {
+          activeOnly: true,
+        });
         const activeNames = savedSubcategories
           .filter((subcategory) => subcategory.isActive)
           .map((subcategory) => subcategory.name)
@@ -345,7 +389,7 @@ export default function GenderProductSection({
           </button>
 
           <p className="text-sm font-bold text-slate-500">
-            {filteredProducts.length} productos
+            {isLoadingProducts ? "Cargando productos..." : `${filteredProducts.length} productos`}
           </p>
         </div>
 
@@ -364,11 +408,17 @@ export default function GenderProductSection({
           <div>
             <div className="mb-5 hidden items-center justify-between gap-4 lg:flex">
               <p className="text-sm font-bold text-slate-500">
-                Mostrando{" "}
-                <span className="font-black text-slate-950">
-                  {filteredProducts.length}
-                </span>{" "}
-                productos
+                {isLoadingProducts ? (
+                  "Cargando productos..."
+                ) : (
+                  <>
+                    Mostrando{" "}
+                    <span className="font-black text-slate-950">
+                      {filteredProducts.length}
+                    </span>{" "}
+                    productos
+                  </>
+                )}
               </p>
 
               <div className="rounded-full bg-white px-4 py-2 text-sm font-black text-slate-500 shadow-sm ring-1 ring-slate-100">
@@ -376,7 +426,13 @@ export default function GenderProductSection({
               </div>
             </div>
 
-            {filteredProducts.length > 0 ? (
+            {isLoadingProducts && filteredProducts.length === 0 ? (
+              <div className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <ProductCardSkeleton key={`product-skeleton-${index}`} />
+                ))}
+              </div>
+            ) : filteredProducts.length > 0 ? (
               <div className="grid grid-cols-2 gap-3 sm:gap-5 xl:grid-cols-3">
                 {filteredProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
@@ -387,13 +443,17 @@ export default function GenderProductSection({
                 className={`rounded-[2rem] border-2 border-dashed ${accentClasses.border} ${accentClasses.soft} p-8 text-center`}
               >
                 <h3 className="text-2xl font-black text-slate-950">
-                  {catalogProducts.length === 0
+                  {loadError && catalogProducts.length === 0
+                    ? "No se pudo cargar la tienda"
+                    : catalogProducts.length === 0
                     ? "Todavía no hay productos"
                     : "No hay productos con esos filtros"}
                 </h3>
 
                 <p className="mt-2 text-slate-600">
-                  {catalogProducts.length === 0
+                  {loadError && catalogProducts.length === 0
+                    ? "No se pudo cargar la tienda. Intenta de nuevo."
+                    : catalogProducts.length === 0
                     ? "Agrega productos desde el panel vendedor para que aparezcan en esta sección."
                     : "Prueba limpiando los filtros o seleccionando otra categoría."}
                 </p>

@@ -1,6 +1,11 @@
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import { applyInventoryChangesInTransaction } from "@/lib/firebase-services/inventory";
+import {
+  formatDeliveryAddressText,
+  normalizeDeliveryAddress,
+} from "@/lib/delivery-address";
 import type {
+  DeliveryAddress,
   DeliveryMethod,
   FirebaseOrder,
   FirebaseOrderItem,
@@ -35,11 +40,21 @@ export type WebOrderCreateInput = {
   customerPhone: string;
   deliveryMethod: DeliveryMethod;
   address: string;
+  deliveryAddress?: DeliveryAddress;
+  shipping?: FirebaseOrder["shipping"];
   notes: string;
   items: FirebaseOrderItem[];
+  subtotal?: number;
+  shippingCost?: number;
   total: number;
+  payment?: FirebaseOrder["payment"];
   totalItems: number;
   wholesaleValidation: FirebaseOrder["wholesaleValidation"];
+};
+
+type WebOrderCreateResponse = {
+  id: string;
+  orderNumber: string;
 };
 
 function ensureFirebaseConfigured() {
@@ -59,9 +74,38 @@ function mapOrderDoc(
   >;
   const customerName = data.customerName ?? customer.name ?? "";
   const customerPhone = data.customerPhone ?? customer.phone ?? "";
-  const address = data.address ?? customer.address ?? "";
+  const deliveryAddress = normalizeDeliveryAddress(
+    data.deliveryAddress ?? customer.deliveryAddress
+  );
+  const legacyAddress =
+    data.address ??
+    data.customerAddress ??
+    customer.address ??
+    "";
+  const address = legacyAddress || formatDeliveryAddressText(deliveryAddress);
   const notes = data.notes ?? customer.notes ?? "";
   const items = data.items ?? [];
+  const subtotal = data.subtotal ?? data.total ?? 0;
+  const shippingCost = data.shippingCost ?? data.shipping?.cost ?? 0;
+  const shipping =
+    data.shipping ??
+    (data.deliveryMethod
+      ? {
+          method: data.deliveryMethod,
+          cost: shippingCost,
+          status:
+            data.deliveryMethod === "Recoger en tienda"
+              ? "pickup"
+              : "calculated",
+          requiresQuote: false,
+        }
+      : undefined);
+  const payment =
+    data.payment ??
+    ({
+      status: "manual",
+      provider: "manual",
+    } as const);
 
   return {
     id: snapshot.id,
@@ -72,16 +116,21 @@ function mapOrderDoc(
       name: customerName,
       phone: customerPhone,
       address,
+      ...(deliveryAddress ? { deliveryAddress } : {}),
       notes,
     },
     customerName,
     customerPhone,
     deliveryMethod: data.deliveryMethod,
     address,
+    customerAddress: data.customerAddress,
+    ...(deliveryAddress ? { deliveryAddress } : {}),
+    ...(shipping ? { shipping } : {}),
     items,
-    subtotal: data.subtotal ?? data.total ?? 0,
-    shippingCost: data.shippingCost,
-    total: data.total ?? 0,
+    subtotal,
+    shippingCost,
+    total: data.total ?? subtotal + shippingCost,
+    payment,
     totalItems:
       data.totalItems ??
       items.reduce((total, item) => total + (item.quantity ?? 0), 0),
@@ -98,10 +147,6 @@ function mapOrderDoc(
     createdAt: data.createdAt ?? "",
     updatedAt: data.updatedAt ?? "",
   };
-}
-
-function createOrderNumber(id: string) {
-  return id.slice(-6).toUpperCase();
 }
 
 export async function getOrders(options: { includeDeleted?: boolean } = {}) {
@@ -143,47 +188,31 @@ export async function createOrder(order: OrderCreateInput) {
 }
 
 export async function createWebOrder(order: WebOrderCreateInput) {
-  const firestore = ensureFirebaseConfigured();
-  const orderRef = doc(collection(firestore, ORDERS_COLLECTION));
-  const orderNumber = createOrderNumber(orderRef.id);
-
-  await runTransaction(firestore, async (transaction) => {
-    await applyInventoryChangesInTransaction(
-      transaction,
-      firestore,
-      order.items,
-      {
-        type: "web_order",
-        orderId: orderRef.id,
-        note: `Pedido ${orderNumber}`,
-        createdBy: "web",
-      },
-      "decrease"
-    );
-
-    transaction.set(orderRef, {
-      ...order,
-      orderNumber,
-      status: "Nuevo",
-      source: "web",
-      subtotal: order.total,
-      shippingCost: 0,
-      inventoryReturned: false,
-      isDeleted: false,
-      customer: {
-        name: order.customerName,
-        phone: order.customerPhone,
-        address: order.address,
-        notes: order.notes,
-      },
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+  const response = await fetch("/api/orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(order),
   });
 
+  const responseBody = (await response.json().catch(() => null)) as
+    | Partial<WebOrderCreateResponse> & { message?: string }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(
+      responseBody?.message ?? "No se pudo enviar el pedido. Intenta de nuevo."
+    );
+  }
+
+  if (!responseBody?.id || !responseBody.orderNumber) {
+    throw new Error("No se pudo enviar el pedido. Intenta de nuevo.");
+  }
+
   return {
-    id: orderRef.id,
-    orderNumber,
+    id: responseBody.id,
+    orderNumber: responseBody.orderNumber,
   };
 }
 

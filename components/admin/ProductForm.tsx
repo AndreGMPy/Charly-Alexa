@@ -16,6 +16,12 @@ import type {
   WholesaleMode,
 } from "@/lib/firebase-types";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
+import {
+  calculateFinalCustomerPrice,
+  DEFAULT_PAYMENT_FEE_PERCENT,
+  MAX_PAYMENT_FEE_PERCENT,
+  MIN_PAYMENT_FEE_PERCENT,
+} from "@/lib/pricing";
 import { formatPrice } from "@/lib/products";
 import {
   BadgePercent,
@@ -50,8 +56,8 @@ type ProductFormValues = {
   longDescription: string;
   category: MainCategoryName;
   subcategory: string;
-  price: string;
   basePrice: string;
+  paymentFeePercent: string;
   sizes: string;
   colors: string;
   stockBySize: StockBySizeFormValue;
@@ -124,8 +130,8 @@ function getInitialValues(category: MainCategoryName = "Niña"): ProductFormValu
     longDescription: "",
     category,
     subcategory: "",
-    price: "",
     basePrice: "",
+    paymentFeePercent: String(DEFAULT_PAYMENT_FEE_PERCENT),
     sizes: defaultSizes.join(", "),
     colors: "Rosa, Blanco",
     stockBySize: createEmptyStockBySize(defaultSizes),
@@ -256,8 +262,10 @@ function productToFormValues(product: FirebaseProduct): ProductFormValues {
     longDescription: product.longDescription,
     category: product.category,
     subcategory: product.subcategory,
-    price: String(product.price || ""),
-    basePrice: product.basePrice ? String(product.basePrice) : "",
+    basePrice: String(product.basePrice ?? product.price ?? ""),
+    paymentFeePercent: String(
+      product.paymentFeePercent ?? DEFAULT_PAYMENT_FEE_PERCENT
+    ),
     sizes: sizes.join(", "),
     colors: product.colors.join(", "),
     stockBySize: stockBySizeToMap(product),
@@ -390,6 +398,12 @@ export default function ProductForm({
   const selectedSubcategoryExists = subcategories.some(
     (item) => item.name === form.subcategory
   );
+  const basePriceValue = Number(form.basePrice);
+  const paymentFeePercentValue = Number(form.paymentFeePercent);
+  const finalCustomerPrice = calculateFinalCustomerPrice(
+    basePriceValue,
+    paymentFeePercentValue
+  );
 
   const previewProduct = useMemo(() => {
     const product: FirebaseProduct = {
@@ -404,8 +418,9 @@ export default function ProductForm({
         "Descripción del producto.",
       category: form.category,
       subcategory: form.subcategory.trim() || "Subcategoría",
-      price: Number(form.price) || 0,
+      price: finalCustomerPrice,
       basePrice: Number(form.basePrice) || undefined,
+      paymentFeePercent: Number(form.paymentFeePercent) || 0,
       sizes: sizes.length > 0 ? sizes : ["Unitalla"],
       colors: parseList(form.colors),
       stock: totalStock,
@@ -432,7 +447,15 @@ export default function ProductForm({
     };
 
     return mapFirebaseProductToProduct(product);
-  }, [form, previewImage, productPhotoUrls, productToEdit?.id, sizes, totalStock]);
+  }, [
+    finalCustomerPrice,
+    form,
+    previewImage,
+    productPhotoUrls,
+    productToEdit?.id,
+    sizes,
+    totalStock,
+  ]);
 
   const imageStorageFolder = useMemo(() => {
     const baseName = productToEdit?.id || createSlug(form.name) || "nuevo-producto";
@@ -602,8 +625,9 @@ export default function ProductForm({
     setError("");
     const requestedSaveAction = saveActionRef.current;
 
-    const price = Number(form.price);
-    const basePrice = form.basePrice.trim() ? Number(form.basePrice) : undefined;
+    const basePrice = Number(form.basePrice);
+    const paymentFeePercent = Number(form.paymentFeePercent);
+    const price = calculateFinalCustomerPrice(basePrice, paymentFeePercent);
     const wholesaleMinQuantity = form.wholesaleMinQuantity.trim()
       ? Number(form.wholesaleMinQuantity)
       : 0;
@@ -622,8 +646,22 @@ export default function ProductForm({
       return;
     }
 
+    if (!Number.isFinite(basePrice) || basePrice <= 0) {
+      setError("Agrega un precio base válido.");
+      return;
+    }
+
+    if (
+      !Number.isFinite(paymentFeePercent) ||
+      paymentFeePercent < MIN_PAYMENT_FEE_PERCENT ||
+      paymentFeePercent > MAX_PAYMENT_FEE_PERCENT
+    ) {
+      setError("El porcentaje debe estar entre 0 y 20.");
+      return;
+    }
+
     if (!Number.isFinite(price) || price <= 0) {
-      setError("Agrega el precio que verá el cliente.");
+      setError("Agrega un precio base válido.");
       return;
     }
 
@@ -662,9 +700,8 @@ export default function ProductForm({
       category: form.category,
       subcategory,
       price,
-      ...(basePrice && Number.isFinite(basePrice) && basePrice > 0
-        ? { basePrice }
-        : {}),
+      basePrice,
+      paymentFeePercent,
       sizes,
       colors,
       stock: totalStock,
@@ -941,22 +978,56 @@ export default function ProductForm({
           <section className="order-3 border-t border-rose-100 pt-5">
             <SectionHeader
               eyebrow="Precio y stock"
-              title="Precio que verá el cliente y piezas disponibles"
-              description="El stock total se calcula solo con las cantidades por talla."
+              title="Precio final y piezas disponibles"
+              description="Escribe el precio interno y el sistema calcula el precio público."
               icon={<DollarSign size={20} />}
             />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <label className="space-y-2">
-                <span className={labelClass}>Precio que verá el cliente</span>
+                <span className={labelClass}>Precio base de tienda</span>
                 <input
-                  value={form.price}
-                  onChange={(event) => updateField("price", event.target.value)}
+                  value={form.basePrice}
+                  onChange={(event) =>
+                    updateField("basePrice", event.target.value)
+                  }
                   className={fieldClass}
                   inputMode="decimal"
-                  placeholder="329"
+                  placeholder="300"
                 />
+                <HelpText>Precio interno antes de ajuste de pago.</HelpText>
               </label>
+
+              <label className="space-y-2">
+                <span className={labelClass}>Porcentaje para cubrir pago</span>
+                <input
+                  value={form.paymentFeePercent}
+                  onChange={(event) =>
+                    updateField("paymentFeePercent", event.target.value)
+                  }
+                  className={fieldClass}
+                  inputMode="decimal"
+                  placeholder={String(DEFAULT_PAYMENT_FEE_PERCENT)}
+                />
+                <HelpText>Se suma al precio final para cubrir costos de pago.</HelpText>
+              </label>
+
+              <div className="space-y-2">
+                <span className={labelClass}>Precio final al cliente</span>
+                <div className="flex min-h-12 items-center rounded-2xl border border-emerald-100 bg-emerald-50 px-4 text-lg font-black text-emerald-800">
+                  {finalCustomerPrice > 0
+                    ? formatPrice(finalCustomerPrice)
+                    : "$0"}
+                </div>
+                <p className="rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-700 ring-1 ring-rose-100">
+                  El cliente verá:{" "}
+                  <span className="text-slate-950">
+                    {finalCustomerPrice > 0
+                      ? formatPrice(finalCustomerPrice)
+                      : "$0"}
+                  </span>
+                </p>
+              </div>
 
               <div className="space-y-2">
                 <span className={labelClass}>Piezas disponibles</span>
@@ -1062,25 +1133,6 @@ export default function ProductForm({
                 )}
               </CollapsibleBlock>
 
-              {showAdvanced && (
-                <CollapsibleBlock
-                  title="Precio anterior"
-                  description="Úsalo solo cuando quieras mostrar rebaja."
-                >
-                  <label className="space-y-2">
-                    <span className={labelClass}>Precio antes de la oferta</span>
-                    <input
-                      value={form.basePrice}
-                      onChange={(event) =>
-                        updateField("basePrice", event.target.value)
-                      }
-                      className={fieldClass}
-                      inputMode="decimal"
-                      placeholder="379"
-                    />
-                  </label>
-                </CollapsibleBlock>
-              )}
             </div>
           </section>
 
@@ -1400,18 +1452,12 @@ export default function ProductForm({
                   {previewProduct.name}
                 </h3>
                 <div className="mt-4">
-                  <p className="text-[11px] font-bold text-slate-600">Precio</p>
-                  <div className="flex flex-wrap items-end gap-2">
-                    <p className="text-2xl font-black text-slate-950">
-                      {formatPrice(previewProduct.price)}
-                    </p>
-                    {previewProduct.basePrice &&
-                      previewProduct.basePrice > previewProduct.price && (
-                        <p className="pb-1 text-sm font-bold text-slate-500 line-through">
-                          {formatPrice(previewProduct.basePrice)}
-                        </p>
-                      )}
-                  </div>
+                  <p className="text-[11px] font-bold text-slate-600">
+                    El cliente verá
+                  </p>
+                  <p className="text-2xl font-black text-slate-950">
+                    {formatPrice(previewProduct.price)}
+                  </p>
                 </div>
               </div>
             </article>

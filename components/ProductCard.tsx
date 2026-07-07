@@ -14,6 +14,49 @@ type ProductCardProps = {
   compact?: boolean;
 };
 
+export function ProductCardSkeleton({ compact = false }: { compact?: boolean }) {
+  return (
+    <article
+      className="overflow-hidden rounded-[1.5rem] bg-white shadow-sm ring-1 ring-slate-100 sm:rounded-[1.75rem]"
+      aria-hidden="true"
+    >
+      <div
+        className={`animate-pulse bg-slate-100 ${
+          compact ? "h-36 sm:h-44 lg:h-52" : "h-40 sm:h-52 lg:h-60"
+        }`}
+      />
+
+      <div className="p-4 sm:p-5">
+        <div className="mb-3 flex gap-2">
+          <div className="h-6 w-20 animate-pulse rounded-full bg-rose-50" />
+          <div className="hidden h-6 w-16 animate-pulse rounded-full bg-slate-100 sm:block" />
+        </div>
+
+        <div className="h-3 w-28 animate-pulse rounded-full bg-slate-100" />
+        <div className="mt-2 h-5 w-full animate-pulse rounded-full bg-slate-100" />
+        <div className="mt-2 h-5 w-3/4 animate-pulse rounded-full bg-slate-100" />
+
+        {!compact && (
+          <div className="mt-3 space-y-2">
+            <div className="h-3 w-full animate-pulse rounded-full bg-slate-100" />
+            <div className="h-3 w-4/5 animate-pulse rounded-full bg-slate-100" />
+          </div>
+        )}
+
+        <div className="mt-5 flex items-end justify-between gap-3">
+          <div>
+            <div className="h-3 w-12 animate-pulse rounded-full bg-slate-100" />
+            <div className="mt-2 h-8 w-24 animate-pulse rounded-full bg-slate-100" />
+          </div>
+          <div className="h-10 w-10 animate-pulse rounded-full bg-slate-100" />
+        </div>
+
+        <div className="mt-5 h-11 animate-pulse rounded-full bg-rose-50" />
+      </div>
+    </article>
+  );
+}
+
 export default function ProductCard({ product, compact = false }: ProductCardProps) {
   const badges = getProductBadges(product).slice(0, 1);
   const availability = getAvailabilityLabel(product);
@@ -96,17 +139,9 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
           <div>
             <p className="text-[11px] font-bold text-slate-400">Precio</p>
 
-            <div className="flex flex-wrap items-end gap-2">
-              <p className="text-2xl font-black text-slate-950 sm:text-3xl">
-                {formatPrice(product.price)}
-              </p>
-
-              {product.basePrice && product.basePrice > product.price && (
-                <p className="pb-1 text-sm font-bold text-slate-400 line-through">
-                  {formatPrice(product.basePrice)}
-                </p>
-              )}
-            </div>
+            <p className="text-2xl font-black text-slate-950 sm:text-3xl">
+              {formatPrice(product.price)}
+            </p>
           </div>
 
           <Link

@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "set-admin": "node scripts/set-admin-claim.mjs usuario1@charlyalexa.com"
   },
   "dependencies": {
     "firebase": "^12.15.0",
+    "firebase-admin": "^14.1.0",
     "lucide-react": "^1.22.0",
     "motion": "^12.42.0",
     "next": "16.2.9",

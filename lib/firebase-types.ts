@@ -24,7 +24,43 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 
-export type DeliveryMethod = "Recoger en tienda" | "Envío a domicilio";
+export type CheckoutDeliveryMethod =
+  | "Recoger en tienda"
+  | "Entrega local"
+  | "Envío nacional";
+
+export type DeliveryMethod = CheckoutDeliveryMethod | "Envío a domicilio";
+
+export type ShippingStatus = "pickup" | "calculated" | "quote_required";
+
+export type OrderShipping = {
+  method: DeliveryMethod;
+  cost: number;
+  status: ShippingStatus;
+  requiresQuote: boolean;
+};
+
+export type DeliveryAddress = {
+  street: string;
+  exteriorNumber: string;
+  interiorNumber?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  references?: string;
+};
+
+export type PaymentStatus = "pending" | "paid" | "failed" | "manual";
+
+export type PaymentProvider = "mercadopago" | "manual";
+
+export type OrderPayment = {
+  status: PaymentStatus;
+  provider: PaymentProvider;
+  preferenceId?: string;
+  paymentId?: string;
+};
 
 export type ProductSizeStock = {
   size: string;
@@ -41,6 +77,7 @@ export type FirebaseProduct = {
   subcategory: string;
   price: number;
   basePrice?: number;
+  paymentFeePercent?: number;
   sizes: string[];
   colors: string[];
   stock: number;
@@ -110,6 +147,7 @@ export type FirebaseCustomer = {
   email?: string;
   phone?: string;
   address?: string;
+  deliveryAddress?: DeliveryAddress;
   notes?: string;
   createdAt: FirebaseDate;
   updatedAt: FirebaseDate;
@@ -124,10 +162,14 @@ export type FirebaseOrder = {
   customerPhone?: string;
   deliveryMethod?: DeliveryMethod;
   address?: string;
+  customerAddress?: string;
+  deliveryAddress?: DeliveryAddress;
+  shipping?: OrderShipping;
   items: FirebaseOrderItem[];
   subtotal: number;
   shippingCost?: number;
   total: number;
+  payment?: OrderPayment;
   totalItems?: number;
   status: OrderStatus;
   source?: "web" | "store" | string;

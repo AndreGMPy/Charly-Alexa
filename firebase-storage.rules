@@ -2,36 +2,46 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.email in [
-          "usuario1@charlyalexa.com"
-        ];
+        && request.auth.token.admin == true;
+    }
+
+    function isImageUnder5MB() {
+      return request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
     }
 
     match /products/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update: if isAdmin() && isImageUnder5MB();
+      allow delete: if isAdmin();
     }
 
     match /homepage/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /categories/{allPaths=**} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /subcategories/{allPaths=**} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow create, update: if isAdmin() && isImageUnder5MB();
+      allow delete: if isAdmin();
     }
 
     match /site/{allPaths=**} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, update: if isAdmin() && isImageUnder5MB();
+      allow delete: if isAdmin();
+    }
+
+    match /categories/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isImageUnder5MB();
+      allow delete: if isAdmin();
+    }
+
+    match /subcategories/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isImageUnder5MB();
+      allow delete: if isAdmin();
     }
 
     match /{allPaths=**} {

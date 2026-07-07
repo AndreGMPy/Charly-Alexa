@@ -57,7 +57,6 @@ export function mapFirebaseProductToProduct(
     category: product.category,
     subcategory: product.subcategory || "General",
     price: product.price,
-    basePrice: product.basePrice,
     sizes: product.sizes.length > 0 ? product.sizes : ["Unitalla"],
     colors: product.colors.length > 0 ? product.colors : ["Sin color"],
     brand: "Charly Alexa",

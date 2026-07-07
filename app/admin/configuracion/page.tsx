@@ -20,8 +20,8 @@ const defaultSettings: SiteSettingsInput = {
   whatsapp: storeConfig.whatsappDisplay,
   address: storeConfig.address,
   hours: "Lunes a sábado de 10:00 a 19:00",
-  deliveryText: "Entrega en tienda o envío acordado por WhatsApp.",
-  paymentText: "Pago en tienda o transferencia al confirmar el pedido.",
+  deliveryText: "Envío nacional a la dirección indicada.",
+  paymentText: "Pago en línea seguro o acuerdo por WhatsApp.",
   social: {
     instagram: "",
     facebook: "",
@@ -270,7 +270,7 @@ export default function AdminSettingsPage() {
                 updateField("deliveryText", event.target.value)
               }
               className={`${fieldClass} min-h-24 resize-none`}
-              placeholder="Entrega en tienda o envío..."
+              placeholder="Envío nacional a la dirección indicada..."
             />
           </label>
 
@@ -282,7 +282,7 @@ export default function AdminSettingsPage() {
                 updateField("paymentText", event.target.value)
               }
               className={`${fieldClass} min-h-24 resize-none`}
-              placeholder="Pago en tienda, transferencia..."
+              placeholder="Pago en línea seguro o acuerdo por WhatsApp..."
             />
           </label>
         </div>

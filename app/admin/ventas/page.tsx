@@ -16,6 +16,7 @@ import type {
   WholesaleMode,
 } from "@/lib/firebase-types";
 import { formatPrice } from "@/lib/products";
+import { getSafeSaleMessage, logErrorInDevelopment } from "@/lib/safe-errors";
 import {
   Eye,
   PackageCheck,
@@ -247,16 +248,6 @@ function getStockErrorMessage(productName: string, size: string) {
   return `No hay suficientes piezas de la talla ${size} en ${productName}.`;
 }
 
-function normalizeStockError(message: string) {
-  const match = message.match(
-    /No hay suficientes piezas disponibles de (.+) talla (.+)\./
-  );
-
-  if (!match) return message;
-
-  return getStockErrorMessage(match[1], match[2]);
-}
-
 function ProductThumb({ product }: { product: FirebaseProduct }) {
   const imageUrl = product.mainImage || product.images[0] || "";
 
@@ -473,12 +464,8 @@ export default function AdminSalesPage() {
       setSearchTerm("");
       await loadSalesData();
     } catch (saveError) {
-      const rawMessage =
-        saveError instanceof Error
-          ? saveError.message
-          : "No se pudo registrar la venta.";
-
-      toast.error(normalizeStockError(rawMessage));
+      logErrorInDevelopment("Admin sale save error", saveError);
+      toast.error(getSafeSaleMessage(saveError));
     } finally {
       setIsSaving(false);
       saleLockRef.current = false;

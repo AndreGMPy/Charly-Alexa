@@ -18,7 +18,7 @@ export default function StoreInfoSection() {
       icon: MessageCircle,
     },
     {
-      title: "Entrega o recoge",
+      title: "Envío nacional",
       description: settings.deliveryText,
       icon: Truck,
     },

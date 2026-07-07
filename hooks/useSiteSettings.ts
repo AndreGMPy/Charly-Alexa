@@ -79,10 +79,10 @@ function mapSettings(settings: SiteSettings | null): PublicSiteSettings {
     hours: settings?.hours?.trim() || "Consultar horario en tienda.",
     deliveryText:
       settings?.deliveryText?.trim() ||
-      "Confirma disponibilidad, entrega o recolección directa con la tienda.",
+      "Envío nacional a la dirección indicada.",
     paymentText:
       settings?.paymentText?.trim() ||
-      "Transferencia bancaria, pago en tienda y opciones seguras si se activan.",
+      "Pago en línea seguro o acuerdo por WhatsApp.",
     social: {
       instagram: settings?.social?.instagram?.trim() || "",
       facebook: settings?.social?.facebook?.trim() || "",

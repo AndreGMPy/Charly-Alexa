@@ -1,6 +1,8 @@
 "use client";
 
+import { isAdminUser } from "@/lib/admin-auth";
 import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import { logErrorInDevelopment } from "@/lib/safe-errors";
 import {
   ClipboardList,
   Home,
@@ -17,7 +19,7 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type AdminShellProps = {
   children: ReactNode;
@@ -40,36 +42,80 @@ export default function AdminShell({ children }: AdminShellProps) {
 
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(isFirebaseConfigured);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const deniedRef = useRef(false);
 
   useEffect(() => {
     if (!isFirebaseConfigured || !auth) {
-      if (!isLoginRoute) {
-        router.replace("/admin/login");
-      }
-
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    let isCurrent = true;
+
+    async function verifyAdminAccess(currentUser: User | null) {
+      if (!currentUser) {
+        if (!isCurrent) return;
+
+        setUser(null);
+        setChecking(false);
+
+        if (!isLoginRoute && !deniedRef.current) {
+          router.replace("/admin/login");
+        }
+
+        return;
+      }
+
+      const hasAdminClaim = await isAdminUser(currentUser);
+      if (!isCurrent) return;
+
+      if (!hasAdminClaim) {
+        deniedRef.current = !isLoginRoute;
+        setUser(null);
+        setAccessDenied(!isLoginRoute);
+        setChecking(false);
+
+        if (auth?.currentUser) {
+          await signOut(auth).catch((error) => {
+            logErrorInDevelopment(
+              "Admin sign out after denied access failed",
+              error
+            );
+          });
+        }
+
+        return;
+      }
+
+      deniedRef.current = false;
       setUser(currentUser);
+      setAccessDenied(false);
       setChecking(false);
 
-      if (!currentUser && !isLoginRoute) {
-        router.replace("/admin/login");
-      }
-
-      if (currentUser && isLoginRoute) {
+      if (isLoginRoute) {
         router.replace("/admin");
       }
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setChecking(true);
+      if (!deniedRef.current) {
+        setAccessDenied(false);
+      }
+      void verifyAdminAccess(currentUser);
     });
 
-    return unsubscribe;
+    return () => {
+      isCurrent = false;
+      unsubscribe();
+    };
   }, [isLoginRoute, router]);
 
   async function handleLogout() {
     if (!auth) return;
 
+    deniedRef.current = false;
     await signOut(auth);
     router.replace("/admin/login");
   }
@@ -84,6 +130,42 @@ export default function AdminShell({ children }: AdminShellProps) {
     return <div className="min-h-screen bg-[#fffaf5]">{children}</div>;
   }
 
+  if (!isFirebaseConfigured || !auth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fffaf5] px-4 text-slate-900">
+        <div className="rounded-[1.75rem] bg-white px-8 py-7 text-center shadow-sm ring-1 ring-rose-100">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-lg font-black text-rose-500">
+            CA
+          </div>
+          <p className="mt-4 text-sm font-black text-slate-950">
+            La tienda todavía no está lista. Intenta más tarde.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#fffaf5] px-4 text-slate-900">
+        <div className="rounded-[1.75rem] bg-white px-8 py-7 text-center shadow-sm ring-1 ring-rose-100">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-lg font-black text-rose-500">
+            CA
+          </div>
+          <p className="mt-4 text-sm font-black text-slate-950">
+            No tienes permisos para entrar al panel.
+          </p>
+          <Link
+            href="/admin/login"
+            className="mt-5 inline-flex rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white transition hover:bg-slate-800"
+          >
+            Volver al login
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (checking || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#fffaf5] px-4 text-slate-900">
@@ -92,7 +174,7 @@ export default function AdminShell({ children }: AdminShellProps) {
             CA
           </div>
           <p className="mt-4 text-sm font-black text-slate-950">
-            Validando sesión
+            Verificando acceso...
           </p>
         </div>
       </div>
@@ -148,7 +230,7 @@ export default function AdminShell({ children }: AdminShellProps) {
         <div className="absolute bottom-6 left-5 right-5">
           <div className="mb-3 rounded-2xl bg-[#fffaf5] p-4 ring-1 ring-rose-100">
             <p className="truncate text-sm font-black text-slate-950">
-              {user.email}
+              {user.email ?? "Administrador"}
             </p>
             <p className="mt-1 text-xs font-bold text-slate-600">Sesión activa</p>
           </div>

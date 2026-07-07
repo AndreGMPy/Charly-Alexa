@@ -33,7 +33,6 @@ export type Product = {
   category: ProductCategory;
   subcategory: ProductSubcategory;
   price: number;
-  basePrice?: number;
   sizes: string[];
   colors: string[];
   brand: string;

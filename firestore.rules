@@ -2,15 +2,43 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.email in [
-          "usuario1@charlyalexa.com"
-        ];
+        && request.auth.token.admin == true;
+    }
+
+    function isString(value) {
+      return value is string && value.size() > 0 && value.size() <= 300;
+    }
+
+    function isOptionalString(value) {
+      return value == null || value is string && value.size() <= 1000;
+    }
+
+    function isSafePhone(value) {
+      return value is string && value.size() >= 8 && value.size() <= 20;
     }
 
     function isPublicOrderCreate() {
-      return request.resource.data.keys().hasAll([
+      return request.resource.data.keys().hasOnly([
+        "folio",
+        "customerName",
+        "customerPhone",
+        "deliveryMethod",
+        "customerAddress",
+        "address",
+        "notes",
+        "items",
+        "total",
+        "totalItems",
+        "status",
+        "source",
+        "wholesaleValidation",
+        "createdAt",
+        "updatedAt"
+      ])
+      && request.resource.data.keys().hasAll([
         "customerName",
         "customerPhone",
         "deliveryMethod",
@@ -22,11 +50,22 @@ service cloud.firestore {
         "createdAt",
         "updatedAt"
       ])
+      && isString(request.resource.data.customerName)
+      && isSafePhone(request.resource.data.customerPhone)
+      && request.resource.data.deliveryMethod is string
+      && request.resource.data.deliveryMethod.size() <= 80
+      && isOptionalString(request.resource.data.notes)
       && request.resource.data.status == "Nuevo"
       && request.resource.data.source == "web"
       && request.resource.data.items is list
+      && request.resource.data.items.size() > 0
+      && request.resource.data.items.size() <= 50
       && request.resource.data.total is number
-      && request.resource.data.totalItems is number;
+      && request.resource.data.total > 0
+      && request.resource.data.total <= 100000
+      && request.resource.data.totalItems is number
+      && request.resource.data.totalItems > 0
+      && request.resource.data.totalItems <= 200;
     }
 
     function isCheckoutStockUpdate() {
@@ -47,30 +86,6 @@ service cloud.firestore {
       allow update: if isAdmin() || isCheckoutStockUpdate();
     }
 
-    match /orders/{orderId} {
-      allow create: if isAdmin() || isPublicOrderCreate();
-      allow read, update, delete: if isAdmin();
-    }
-
-    match /sales/{saleId} {
-      allow read, create, update, delete: if isAdmin();
-    }
-
-    match /storeSales/{saleId} {
-      allow read, create, update, delete: if isAdmin();
-    }
-
-    match /stockMovements/{movementId} {
-      allow read: if isAdmin();
-      allow create: if isAdmin()
-        || (
-          request.resource.data.type == "web_order"
-          && request.resource.data.quantityChange is number
-          && request.resource.data.quantityChange < 0
-        );
-      allow update, delete: if isAdmin();
-    }
-
     match /categories/{categoryId} {
       allow read: if isAdmin() || resource.data.isActive == true;
       allow create, update, delete: if isAdmin();
@@ -89,6 +104,62 @@ service cloud.firestore {
     match /siteSettings/{documentId} {
       allow read: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow create: if isAdmin() || isPublicOrderCreate();
+      allow read, update, delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /storeSales/{saleId} {
+      allow read, create, update, delete: if isAdmin();
+    }
+
+    match /stockMovements/{movementId} {
+      allow read: if isAdmin();
+
+      allow create: if isAdmin()
+        || (
+          request.resource.data.keys().hasOnly([
+            "type",
+            "productId",
+            "productName",
+            "size",
+            "quantityChange",
+            "previousStock",
+            "newStock",
+            "orderId",
+            "note",
+            "reason",
+            "source",
+            "createdAt",
+            "createdBy"
+          ])
+          && request.resource.data.type == "web_order"
+          && request.resource.data.source == "web"
+          && request.resource.data.quantityChange is number
+          && request.resource.data.quantityChange < 0
+          && request.resource.data.quantityChange >= -200
+        );
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow create: if request.resource.data.keys().hasOnly([
+        "name",
+        "phone",
+        "createdAt",
+        "updatedAt"
+      ])
+      && isString(request.resource.data.name)
+      && isSafePhone(request.resource.data.phone);
+
+      allow read, update, delete: if isAdmin();
     }
 
     match /{document=**} {

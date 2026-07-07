@@ -1,61 +1,22 @@
 "use client";
 
+import { refreshAndCheckAdminUser } from "@/lib/admin-auth";
 import { auth, isFirebaseConfigured } from "@/lib/firebase";
-import { FirebaseError } from "firebase/app";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  getSafeLoginErrorMessage,
+  logErrorInDevelopment,
+} from "@/lib/safe-errors";
+import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { LockKeyhole, LogIn } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 
-function getLoginMessage(error: unknown) {
-  if (error instanceof FirebaseError) {
-    console.error("Admin login error:", {
-      code: error.code,
-      message: error.message,
-      customData: error.customData,
-    });
-
-    if (error.code === "auth/invalid-credential") {
-      return "Correo o contraseña incorrectos. Revisa los datos e intenta de nuevo.";
-    }
-
-    if (error.code === "auth/user-not-found") {
-      return "Este correo no tiene acceso al panel.";
-    }
-
-    if (error.code === "auth/wrong-password") {
-      return "La contraseña no coincide con este correo.";
-    }
-
-    if (error.code === "auth/operation-not-allowed") {
-      return "El acceso del panel no está listo. Contacta a quien configuró la tienda.";
-    }
-
-    if (error.code === "auth/unauthorized-domain") {
-      return "Este navegador no tiene acceso al panel por el momento.";
-    }
-
-    if (error.code === "auth/api-key-not-valid") {
-      return "El acceso del panel no está listo. Contacta a quien configuró la tienda.";
-    }
-
-    if (error.code === "auth/too-many-requests") {
-      return "Hay demasiados intentos. Espera unos minutos y vuelve a intentar.";
-    }
-
-    return "No se pudo iniciar sesión. Intenta de nuevo.";
-  }
-
-  console.error("Unknown login error:", error);
-  return "No se pudo iniciar sesión. Intenta de nuevo.";
-}
-
 export default function AdminLoginPage() {
   const router = useRouter();
 
-  const [email, setEmail] = useState("usuario1@charlyalexa.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -65,21 +26,32 @@ export default function AdminLoginPage() {
     setError("");
 
     if (!isFirebaseConfigured || !auth) {
-      setError(
-        "El acceso del panel todavía no está listo. Contacta a quien configuró la tienda."
-      );
+      setError("La conexión de la tienda no está configurada correctamente.");
       return;
     }
 
     try {
       setIsSubmitting(true);
 
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      const credential = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
+      const hasAdminClaim = await refreshAndCheckAdminUser(credential.user);
+
+      if (!hasAdminClaim) {
+        await signOut(auth);
+        setError("Tu cuenta no tiene permisos para entrar al panel.");
+        toast.error("Tu cuenta no tiene permisos para entrar al panel.");
+        return;
+      }
 
       toast.success("Sesión iniciada");
       router.replace("/admin");
     } catch (loginError) {
-      const message = getLoginMessage(loginError);
+      logErrorInDevelopment("Admin login error", loginError);
+      const message = getSafeLoginErrorMessage(loginError);
       setError(message);
       toast.error("No se pudo iniciar sesión");
     } finally {

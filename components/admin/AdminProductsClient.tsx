@@ -12,6 +12,10 @@ import {
 import type { FirebaseProduct, MainCategoryName } from "@/lib/firebase-types";
 import { formatPrice } from "@/lib/products";
 import {
+  getSafeFirebaseActionMessage,
+  logErrorInDevelopment,
+} from "@/lib/safe-errors";
+import {
   CheckCircle2,
   Copy,
   ImageIcon,
@@ -64,6 +68,12 @@ function getStatusClass(product: AdminProduct) {
   if (status === "Visible") return "bg-emerald-50 text-emerald-700";
   if (status === "Agotado") return "bg-amber-50 text-amber-700";
   return "bg-slate-100 text-slate-700";
+}
+
+function getInternalBasePrice(product: AdminProduct) {
+  return product.basePrice && product.basePrice > 0
+    ? product.basePrice
+    : product.price;
 }
 
 function matchesProductFilter(product: AdminProduct, filter: ProductFilter) {
@@ -166,12 +176,13 @@ export default function AdminProductsClient() {
       const firebaseProducts = await getProducts();
       setProducts(firebaseProducts);
     } catch (loadError) {
-      const message =
-        loadError instanceof Error
-          ? loadError.message
-          : "No se pudieron cargar los productos.";
-
-      setError(message);
+      logErrorInDevelopment("Admin products load error", loadError);
+      setError(
+        getSafeFirebaseActionMessage(
+          loadError,
+          "No se pudieron cargar los productos."
+        )
+      );
       setProducts([]);
     } finally {
       setIsLoading(false);
@@ -259,6 +270,9 @@ export default function AdminProductsClient() {
       subcategory: product.subcategory,
       price: product.price,
       ...(product.basePrice ? { basePrice: product.basePrice } : {}),
+      ...(typeof product.paymentFeePercent === "number"
+        ? { paymentFeePercent: product.paymentFeePercent }
+        : {}),
       sizes: [...product.sizes],
       colors: [...product.colors],
       stock: product.stock,
@@ -638,8 +652,13 @@ export default function AdminProductsClient() {
                       </div>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-sm font-black text-slate-950">
-                    {formatPrice(product.price)}
+                  <td className="px-5 py-4">
+                    <p className="text-sm font-black text-slate-950">
+                      Precio final: {formatPrice(product.price)}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                      Precio base: {formatPrice(getInternalBasePrice(product))}
+                    </p>
                   </td>
                   <td className="px-5 py-4 text-sm font-black text-slate-700">
                     {product.stock}
@@ -709,10 +728,13 @@ export default function AdminProductsClient() {
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-2xl bg-[#fffaf5] px-3 py-2 ring-1 ring-rose-100">
                   <p className="text-[11px] font-black uppercase text-slate-600">
-                    Precio
+                    Precio final
                   </p>
                   <p className="mt-0.5 text-sm font-black text-slate-950">
                     {formatPrice(product.price)}
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-bold text-slate-500">
+                    Precio base: {formatPrice(getInternalBasePrice(product))}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-[#fffaf5] px-3 py-2 ring-1 ring-rose-100">

@@ -8,10 +8,12 @@ import {
   updateOrderStatus,
 } from "@/lib/firebase-services/orders";
 import type { FirebaseDate, FirebaseOrder, OrderStatus } from "@/lib/firebase-types";
+import { getDeliveryAddressLines } from "@/lib/delivery-address";
 import { formatPrice } from "@/lib/products";
 import { buildWhatsAppUrlWithNumber } from "@/hooks/useSiteSettings";
 import {
   ClipboardList,
+  Copy,
   Eye,
   MessageCircle,
   PackageCheck,
@@ -106,6 +108,37 @@ function getItemName(item: FirebaseOrder["items"][number]) {
   return item.productName ?? item.name ?? "Producto";
 }
 
+function getShippingCost(order: FirebaseOrder) {
+  return order.shippingCost ?? order.shipping?.cost ?? 0;
+}
+
+function formatOrderShipping(order: FirebaseOrder) {
+  if (order.shipping?.requiresQuote) return "A cotizar";
+  return formatPrice(getShippingCost(order));
+}
+
+function getPaymentStatusLabel(order: FirebaseOrder) {
+  const status = order.payment?.status;
+
+  if (status === "paid") return "Pagado";
+  if (status === "pending") return "Pendiente";
+  if (status === "failed") return "Fallido";
+  if (status === "manual") return "Manual";
+  return "No registrado";
+}
+
+function getPaymentProviderLabel(order: FirebaseOrder) {
+  const provider = order.payment?.provider;
+
+  if (provider === "mercadopago") return "Mercado Pago";
+  if (provider === "manual") return "Manual / WhatsApp";
+  return "No registrado";
+}
+
+function getDeliveryMethodLabel(order: FirebaseOrder) {
+  return order.deliveryMethod ?? order.shipping?.method ?? "Envío nacional";
+}
+
 function matchesOrderFilter(order: FirebaseOrder, filter: OrderFilter) {
   const status = getSpanishStatus(order.status);
 
@@ -142,15 +175,57 @@ function buildCustomerMessage(order: FirebaseOrder) {
   Cantidad: ${item.quantity}`
     )
     .join("\n\n");
+  const addressLines = getOrderDeliveryAddressLines(order);
+  const deliveryText =
+    order.deliveryMethod === "Recoger en tienda"
+      ? "Entrega: Recoger en tienda"
+      : [
+          `Método de entrega: ${getDeliveryMethodLabel(order)}`,
+          addressLines.length > 0
+            ? `Dirección:\n${addressLines
+                .map((line) => `${line.label}: ${line.value}`)
+                .join("\n")}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+  const quoteText = order.shipping?.requiresQuote
+    ? "\n\nEl envío se confirmará por WhatsApp."
+    : "";
 
   return `Hola ${order.customerName || "buen día"}, te escribo de Charly Alexa sobre tu pedido #${getOrderFolio(order)}.
+
+${deliveryText}
 
 Productos:
 ${productsText}
 
+Subtotal: ${formatPrice(order.subtotal)}
+Envío: ${formatOrderShipping(order)}
 Total: ${formatPrice(order.total)}
+Estado de pago: ${getPaymentStatusLabel(order)}
+Método de pago: ${getPaymentProviderLabel(order)}${quoteText}
 
 Estado actual: ${getSpanishStatus(order.status)}`;
+}
+
+function getOrderDeliveryAddressLines(order: FirebaseOrder) {
+  const structuredLines = getDeliveryAddressLines(order.deliveryAddress);
+  if (structuredLines.length > 0) return structuredLines;
+
+  const fallbackAddress =
+    order.address ?? order.customerAddress ?? order.customer?.address ?? "";
+
+  return fallbackAddress.trim()
+    ? [{ label: "Dirección", value: fallbackAddress.trim() }]
+    : [];
+}
+
+function buildCopyAddressText(order: FirebaseOrder) {
+  if (order.deliveryMethod === "Recoger en tienda") return "Recoger en tienda";
+
+  const addressLines = getOrderDeliveryAddressLines(order);
+  return addressLines.map((line) => `${line.label}: ${line.value}`).join("\n");
 }
 
 export default function AdminOrdersPage() {
@@ -325,6 +400,22 @@ export default function AdminOrdersPage() {
     );
   }
 
+  async function handleCopyAddress(order: FirebaseOrder) {
+    const addressText = buildCopyAddressText(order);
+
+    if (!addressText) {
+      toast.error("Este pedido no tiene dirección registrada.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(addressText);
+      toast.success("Dirección copiada.");
+    } catch {
+      toast.error("No se pudo copiar la dirección.");
+    }
+  }
+
   return (
     <section className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -431,6 +522,10 @@ export default function AdminOrdersPage() {
           const status = getSpanishStatus(order.status);
           const isExpanded = expandedOrderId === order.id;
           const isCancelled = status === "Cancelado";
+          const deliveryAddressLines = getOrderDeliveryAddressLines(order);
+          const canCopyAddress =
+            order.deliveryMethod !== "Recoger en tienda" &&
+            deliveryAddressLines.length > 0;
 
           if (isTrashView) {
             return (
@@ -531,7 +626,7 @@ export default function AdminOrdersPage() {
                     {order.customerPhone || "Sin teléfono"} · {formatDate(order.createdAt)}
                   </p>
                   <p className="mt-1 text-xs font-bold text-slate-500 sm:text-sm">
-                    {order.deliveryMethod || "Entrega por confirmar"}
+                    Método de entrega: {getDeliveryMethodLabel(order)}
                   </p>
                 </div>
 
@@ -566,7 +661,23 @@ export default function AdminOrdersPage() {
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-3">
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 md:grid-cols-5">
+                <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
+                  <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
+                    Subtotal
+                  </p>
+                  <p className="mt-1 break-words text-sm font-black text-slate-950 sm:text-xl">
+                    {formatPrice(order.subtotal)}
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
+                  <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
+                    Envío
+                  </p>
+                  <p className="mt-1 break-words text-sm font-black text-slate-950 sm:text-xl">
+                    {formatOrderShipping(order)}
+                  </p>
+                </div>
                 <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
                     Total
@@ -577,19 +688,18 @@ export default function AdminOrdersPage() {
                 </div>
                 <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
-                    Piezas
+                    Pago
                   </p>
-                  <p className="mt-1 text-lg font-black text-slate-950 sm:text-2xl">
-                    {order.totalItems ?? order.items.length}
+                  <p className="mt-1 text-sm font-black text-slate-950 sm:text-xl">
+                    {getPaymentStatusLabel(order)}
                   </p>
                 </div>
                 <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
-                    Productos
+                    Piezas
                   </p>
-                  <p className="mt-1 line-clamp-2 text-xs font-black text-slate-950 sm:text-sm">
-                    {order.items.slice(0, 2).map(getItemName).join(", ")}
-                    {order.items.length > 2 ? "..." : ""}
+                  <p className="mt-1 text-lg font-black text-slate-950 sm:text-2xl">
+                    {order.totalItems ?? order.items.length}
                   </p>
                 </div>
               </div>
@@ -634,7 +744,39 @@ export default function AdminOrdersPage() {
                         Entrega
                       </p>
                       <p className="mt-1 text-sm font-black text-slate-950">
-                        {order.deliveryMethod || "Por confirmar"}
+                        {getDeliveryMethodLabel(order)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <p className="text-xs font-black uppercase text-slate-400">
+                        Estado de pago
+                      </p>
+                      <p className="mt-1 text-sm font-black text-slate-950">
+                        {getPaymentStatusLabel(order)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <p className="text-xs font-black uppercase text-slate-400">
+                        Método de pago
+                      </p>
+                      <p className="mt-1 text-sm font-black text-slate-950">
+                        {getPaymentProviderLabel(order)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <p className="text-xs font-black uppercase text-slate-400">
+                        Envío
+                      </p>
+                      <p className="mt-1 text-sm font-black text-slate-950">
+                        {formatOrderShipping(order)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-white p-3">
+                      <p className="text-xs font-black uppercase text-slate-400">
+                        Cotización de envío
+                      </p>
+                      <p className="mt-1 text-sm font-black text-slate-950">
+                        {order.shipping?.requiresQuote ? "Requiere cotización" : "No requiere"}
                       </p>
                     </div>
                     <div className="rounded-2xl bg-white p-3">
@@ -669,16 +811,43 @@ export default function AdminOrdersPage() {
                     ))}
                   </div>
 
-                  {order.address && (
-                    <div className="rounded-2xl bg-white p-3">
+                  <div className="rounded-2xl bg-white p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <p className="text-xs font-black uppercase text-slate-400">
-                        Dirección
+                        Dirección de entrega
                       </p>
-                      <p className="mt-1 text-sm font-bold leading-6 text-slate-600">
-                        {order.address}
-                      </p>
+                      {canCopyAddress && (
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyAddress(order)}
+                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-200"
+                        >
+                          <Copy size={14} />
+                          Copiar dirección
+                        </button>
+                      )}
                     </div>
-                  )}
+                    {order.deliveryMethod === "Recoger en tienda" ? (
+                      <p className="mt-1 text-sm font-black text-slate-950">
+                        Recoger en tienda
+                      </p>
+                    ) : deliveryAddressLines.length > 0 ? (
+                      <dl className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
+                        {deliveryAddressLines.map((line) => (
+                          <div key={line.label}>
+                            <dt className="font-black text-slate-700">
+                              {line.label}
+                            </dt>
+                            <dd className="font-bold">{line.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : (
+                      <p className="mt-1 text-sm font-bold leading-6 text-slate-600">
+                        Sin dirección registrada
+                      </p>
+                    )}
+                  </div>
 
                   {order.notes && (
                     <div className="rounded-2xl bg-white p-3">
@@ -693,11 +862,28 @@ export default function AdminOrdersPage() {
 
                   <div className="rounded-2xl bg-white p-3">
                     <p className="text-xs font-black uppercase text-slate-400">
-                      Total
+                      Totales
                     </p>
-                    <p className="mt-1 text-2xl font-black text-slate-950">
-                      {formatPrice(order.total)}
-                    </p>
+                    <div className="mt-2 space-y-2 text-sm font-bold text-slate-600">
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Subtotal</span>
+                        <span className="font-black text-slate-950">
+                          {formatPrice(order.subtotal)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>Envío</span>
+                        <span className="font-black text-slate-950">
+                          {formatOrderShipping(order)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
+                        <span>Total</span>
+                        <span className="text-xl font-black text-slate-950">
+                          {formatPrice(order.total)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

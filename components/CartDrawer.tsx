@@ -1,9 +1,30 @@
 "use client";
 
 import { buildWhatsAppUrlWithNumber, useSiteSettings } from "@/hooks/useSiteSettings";
+import {
+  emptyDeliveryAddress,
+  formatDeliveryAddressText,
+  getDeliveryAddressLines,
+  getDeliveryAddressValidationMessage,
+} from "@/lib/delivery-address";
 import { createWebOrder } from "@/lib/firebase-services/orders";
-import type { DeliveryMethod, FirebaseOrderItem } from "@/lib/firebase-types";
+import type {
+  CheckoutDeliveryMethod,
+  DeliveryAddress,
+  FirebaseOrderItem,
+  OrderShipping,
+} from "@/lib/firebase-types";
 import { formatPrice, getProductStockForSize } from "@/lib/products";
+import {
+  getSafeOrderMessage,
+  getSafePaymentMessage,
+  logErrorInDevelopment,
+} from "@/lib/safe-errors";
+import {
+  calculateOrderShipping,
+  isDeliveryAddressRequired,
+  NATIONAL_DELIVERY_METHOD,
+} from "@/lib/shipping";
 import {
   getWholesaleLabel,
   isWholesaleProduct,
@@ -14,12 +35,12 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronLeft,
+  CreditCard,
   Minus,
   Plus,
   Send,
   ShoppingBag,
   Trash2,
-  Truck,
   UserRound,
   X,
 } from "lucide-react";
@@ -28,27 +49,34 @@ import { useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type CheckoutStep = 1 | 2 | 3;
+type PaymentPreference = "pay_now" | "whatsapp";
 
 type CustomerForm = {
   customerName: string;
   customerPhone: string;
-  deliveryMethod: DeliveryMethod;
-  address: string;
+  deliveryMethod: CheckoutDeliveryMethod;
+  deliveryAddress: DeliveryAddress;
+  paymentPreference: PaymentPreference;
   notes: string;
 };
 
 type Confirmation = {
+  orderId: string;
   orderNumber: string;
   whatsappUrl: string;
+  paymentPreference: PaymentPreference;
 };
 
-const initialCustomerForm: CustomerForm = {
-  customerName: "",
-  customerPhone: "",
-  deliveryMethod: "Recoger en tienda",
-  address: "",
-  notes: "",
-};
+function createInitialCustomerForm(): CustomerForm {
+  return {
+    customerName: "",
+    customerPhone: "",
+    deliveryMethod: NATIONAL_DELIVERY_METHOD,
+    deliveryAddress: { ...emptyDeliveryAddress },
+    paymentPreference: "pay_now",
+    notes: "",
+  };
+}
 
 const checkoutSteps: { step: CheckoutStep; label: string }[] = [
   { step: 1, label: "Productos" },
@@ -102,14 +130,37 @@ export default function CartDrawer() {
 
   const [step, setStep] = useState<CheckoutStep>(1);
   const [customerForm, setCustomerForm] =
-    useState<CustomerForm>(initialCustomerForm);
+    useState<CustomerForm>(() => createInitialCustomerForm());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isStartingPayment, setIsStartingPayment] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const submitLockRef = useRef(false);
 
-  const total = totalPrice();
+  const subtotal = totalPrice();
   const totalPieces = totalItems();
   const wholesaleValidation = validateWholesaleCart(items);
+  const hasWholesaleItems = items.some((item) => isWholesaleProduct(item.product));
+  const shipping = calculateOrderShipping({
+    method: customerForm.deliveryMethod,
+    totalItems: totalPieces,
+    hasWholesale: hasWholesaleItems,
+  });
+  const shippingCost = shipping.cost;
+  const total = subtotal + shippingCost;
+  const needsDeliveryAddress = isDeliveryAddressRequired(
+    customerForm.deliveryMethod
+  );
+  const shippingDisplay = shipping.requiresQuote
+    ? "A cotizar"
+    : formatPrice(shippingCost);
+  const paymentStatusText =
+    customerForm.paymentPreference === "pay_now"
+      ? "Pendiente"
+      : "Manual / acordar por WhatsApp";
+  const paymentPreferenceText =
+    customerForm.paymentPreference === "pay_now"
+      ? "Pagar ahora"
+      : "Acordar por WhatsApp";
   const stockMessages = useMemo(
     () =>
       items
@@ -138,9 +189,46 @@ export default function CartDrawer() {
     }));
   }
 
+  function updateDeliveryAddress<Key extends keyof DeliveryAddress>(
+    key: Key,
+    value: DeliveryAddress[Key]
+  ) {
+    setCustomerForm((current) => ({
+      ...current,
+      deliveryAddress: {
+        ...current.deliveryAddress,
+        [key]: value,
+      },
+    }));
+  }
+
+  function getCleanDeliveryAddress() {
+    const address = customerForm.deliveryAddress;
+
+    return {
+      street: address.street.trim(),
+      exteriorNumber: address.exteriorNumber.trim(),
+      interiorNumber: address.interiorNumber?.trim() ?? "",
+      neighborhood: address.neighborhood.trim(),
+      city: address.city.trim(),
+      state: address.state.trim(),
+      zipCode: address.zipCode.trim(),
+      references: address.references?.trim() ?? "",
+    };
+  }
+
+  function getFormattedDeliveryAddress() {
+    return formatDeliveryAddressText(getCleanDeliveryAddress(), {
+      numberLabel: "Número",
+      interiorLabel: "Interior",
+      cityLabel: "Municipio/Ciudad",
+      zipLabel: "CP",
+    });
+  }
+
   function resetCartState() {
     setStep(1);
-    setCustomerForm(initialCustomerForm);
+    setCustomerForm(createInitialCustomerForm());
     setConfirmation(null);
   }
 
@@ -176,6 +264,8 @@ export default function CartDrawer() {
   function buildOrderMessage(
     orderNumber: string,
     orderItems: FirebaseOrderItem[],
+    orderSubtotal: number,
+    orderShipping: OrderShipping,
     orderTotal: number
   ) {
     const productsText = orderItems
@@ -187,10 +277,15 @@ export default function CartDrawer() {
       )
       .join("\n\n");
 
-    const deliveryText =
-      customerForm.deliveryMethod === "Envío a domicilio" && customerForm.address
-        ? `Entrega: ${customerForm.deliveryMethod}\nDirección: ${customerForm.address}`
-        : `Entrega: ${customerForm.deliveryMethod}`;
+    const deliveryAddressText = needsDeliveryAddress
+      ? getFormattedDeliveryAddress()
+      : "";
+    const deliveryText = deliveryAddressText
+      ? `Método de entrega: ${customerForm.deliveryMethod}\n\nDirección:\n${deliveryAddressText}`
+      : `Entrega: ${customerForm.deliveryMethod}`;
+    const quoteText = orderShipping.requiresQuote
+      ? "\n\nEl envío se confirmará por WhatsApp."
+      : "";
 
     return `Hola, quiero confirmar este pedido:
 
@@ -201,7 +296,11 @@ ${deliveryText}
 Productos:
 ${productsText}
 
+Subtotal: ${formatPrice(orderSubtotal)}
+Envío nacional: ${orderShipping.requiresQuote ? "A cotizar" : formatPrice(orderShipping.cost)}
 Total: ${formatPrice(orderTotal)}
+Forma de pago: ${paymentPreferenceText}
+${quoteText}
 
 Notas:
 ${customerForm.notes || "Sin notas."}`;
@@ -232,21 +331,26 @@ ${customerForm.notes || "Sin notas."}`;
 
   function validateCustomerData() {
     if (!customerForm.customerName.trim()) {
-      toast.error("Agrega el nombre del cliente.");
+      toast.error("Agrega tu nombre.");
       return false;
     }
 
-    if (!customerForm.customerPhone.trim()) {
-      toast.error("Agrega el teléfono del cliente.");
+    const phoneDigits = customerForm.customerPhone.replace(/\D/g, "");
+
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      toast.error("Agrega un teléfono válido.");
       return false;
     }
 
-    if (
-      customerForm.deliveryMethod === "Envío a domicilio" &&
-      !customerForm.address.trim()
-    ) {
-      toast.error("Agrega la dirección para el envío.");
-      return false;
+    if (needsDeliveryAddress) {
+      const validationMessage = getDeliveryAddressValidationMessage(
+        getCleanDeliveryAddress()
+      );
+
+      if (validationMessage) {
+        toast.error(validationMessage);
+        return false;
+      }
     }
 
     return true;
@@ -284,50 +388,108 @@ ${customerForm.notes || "Sin notas."}`;
     }
 
     const orderItems = buildOrderItems();
+    const orderSubtotal = subtotal;
+    const orderShipping = shipping;
     const orderTotal = total;
+    const payment =
+      customerForm.paymentPreference === "pay_now"
+        ? { status: "pending" as const, provider: "mercadopago" as const }
+        : { status: "manual" as const, provider: "manual" as const };
 
     try {
       setIsSubmitting(true);
+      const cleanDeliveryAddress = getCleanDeliveryAddress();
+      const formattedDeliveryAddress =
+        needsDeliveryAddress
+          ? formatDeliveryAddressText(cleanDeliveryAddress)
+          : "";
       const result = await createWebOrder({
         customerName: customerForm.customerName.trim(),
         customerPhone: customerForm.customerPhone.trim(),
         deliveryMethod: customerForm.deliveryMethod,
-        address:
-          customerForm.deliveryMethod === "Envío a domicilio"
-            ? customerForm.address.trim()
-            : "",
+        deliveryAddress: needsDeliveryAddress ? cleanDeliveryAddress : undefined,
+        shipping: orderShipping,
+        address: formattedDeliveryAddress,
         notes: customerForm.notes.trim(),
         items: orderItems,
+        subtotal: orderSubtotal,
+        shippingCost: orderShipping.cost,
         total: orderTotal,
+        payment,
         totalItems: totalPieces,
         wholesaleValidation,
       });
 
-      toast.success("Pedido enviado", {
-        description: `Folio #${result.orderNumber}. Se abrirá WhatsApp para confirmarlo.`,
+      toast.success("Pedido confirmado", {
+        description:
+          customerForm.paymentPreference === "pay_now"
+            ? `Folio #${result.orderNumber}. Ya puedes continuar al pago.`
+            : `Folio #${result.orderNumber}. Se abrirá WhatsApp para confirmarlo.`,
       });
 
       const whatsappUrl = buildWhatsAppUrlWithNumber(
         settings.whatsappInternational,
-        buildOrderMessage(result.orderNumber, orderItems, orderTotal)
+        buildOrderMessage(
+          result.orderNumber,
+          orderItems,
+          orderSubtotal,
+          orderShipping,
+          orderTotal
+        )
       );
 
       clearCart();
-      setConfirmation({ orderNumber: result.orderNumber, whatsappUrl });
+      setConfirmation({
+        orderId: result.id,
+        orderNumber: result.orderNumber,
+        whatsappUrl,
+        paymentPreference: customerForm.paymentPreference,
+      });
       setStep(1);
 
-      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      if (customerForm.paymentPreference === "whatsapp") {
+        window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (error) {
-      const rawMessage =
-        error instanceof Error ? error.message : "No se pudo enviar el pedido.";
-      const message = rawMessage.includes("No hay suficientes piezas")
-        ? "Lo sentimos, ya no hay suficientes piezas de esta talla."
-        : `${rawMessage} Intenta de nuevo.`;
-
-      toast.error(message);
+      logErrorInDevelopment("Checkout order error", error);
+      toast.error(getSafeOrderMessage(error));
     } finally {
       setIsSubmitting(false);
       submitLockRef.current = false;
+    }
+  }
+
+  async function handleStartPayment() {
+    if (!confirmation || isStartingPayment) return;
+
+    try {
+      setIsStartingPayment(true);
+      const response = await fetch(
+        "/api/payments/mercadopago/create-preference",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ orderId: confirmation.orderId }),
+        }
+      );
+      const responseBody = (await response.json().catch(() => null)) as
+        | { message?: string; initPoint?: string }
+        | null;
+
+      if (!response.ok || !responseBody?.initPoint) {
+        throw new Error(
+          responseBody?.message ?? "No se pudo iniciar el pago. Intenta de nuevo."
+        );
+      }
+
+      window.location.href = responseBody.initPoint;
+    } catch (error) {
+      logErrorInDevelopment("Mercado Pago preference error", error);
+      toast.error(getSafePaymentMessage(error));
+    } finally {
+      setIsStartingPayment(false);
     }
   }
 
@@ -335,6 +497,10 @@ ${customerForm.notes || "Sin notas."}`;
     ...wholesaleValidation.messages,
     ...stockMessages,
   ];
+  const confirmationAddressLines =
+    needsDeliveryAddress
+      ? getDeliveryAddressLines(getCleanDeliveryAddress())
+      : [];
 
   return (
     <AnimatePresence>
@@ -377,36 +543,51 @@ ${customerForm.notes || "Sin notas."}`;
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 pb-32 sm:pb-24">
+            <div className="flex-1 overflow-y-auto p-5 pb-64 sm:pb-44">
               {confirmation ? (
                 <div className="flex min-h-full flex-col items-center justify-center text-center">
                   <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-[2rem] bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
                     <CheckCircle2 size={44} />
                   </div>
                   <h3 className="text-2xl font-black text-slate-950">
-                    Pedido enviado
+                    Pedido confirmado
                   </h3>
                   <p className="mt-2 text-sm font-bold text-slate-500">
                     Folio #{confirmation.orderNumber}
                   </p>
                   <p className="mt-2 max-w-xs text-sm leading-6 text-slate-500">
-                    Tu pedido se guardó correctamente. Te llevaremos a WhatsApp
-                    para confirmar con la tienda.
+                    {confirmation.paymentPreference === "pay_now"
+                      ? "Tu pedido se guardó correctamente. Continúa al pago cuando estés listo."
+                      : "Tu pedido se guardó correctamente. Te llevaremos a WhatsApp para confirmar con la tienda."}
                   </p>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.open(
-                        confirmation.whatsappUrl,
-                        "_blank",
-                        "noopener,noreferrer"
-                      )
-                    }
-                    className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-600"
-                  >
-                    <Send size={17} />
-                    Abrir WhatsApp otra vez
-                  </button>
+                  {confirmation.paymentPreference === "pay_now" ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleStartPayment()}
+                      disabled={isStartingPayment}
+                      className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      <CreditCard size={17} />
+                      {isStartingPayment
+                        ? "Preparando pago..."
+                        : "Continuar al pago"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(
+                          confirmation.whatsappUrl,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                      className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-emerald-600"
+                    >
+                      <Send size={17} />
+                      Abrir WhatsApp otra vez
+                    </button>
+                  )}
                 </div>
               ) : items.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center text-center">
@@ -557,10 +738,14 @@ ${customerForm.notes || "Sin notas."}`;
                             Datos del cliente
                           </h3>
                           <p className="text-xs font-bold text-slate-400">
-                            Solo pedimos lo necesario para confirmar.
+                            Completa los datos para enviar tu pedido.
                           </p>
                         </div>
                       </div>
+
+                      <p className="rounded-2xl bg-[#fffaf5] px-4 py-3 text-sm font-bold leading-6 text-slate-600 ring-1 ring-slate-100">
+                        Tu pedido se enviará a la dirección indicada.
+                      </p>
 
                       <label className="block">
                         <span className="text-xs font-black uppercase text-slate-400">
@@ -596,62 +781,230 @@ ${customerForm.notes || "Sin notas."}`;
                         />
                       </label>
 
-                      <div>
-                        <span className="text-xs font-black uppercase text-slate-400">
-                          Método de entrega
-                        </span>
-                        <div className="mt-2 grid gap-2">
-                          {(["Recoger en tienda", "Envío a domicilio"] as const).map(
-                            (method) => (
-                              <button
-                                key={method}
-                                type="button"
-                                onClick={() =>
-                                  updateCustomerForm("deliveryMethod", method)
-                                }
-                                className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-black transition ${
-                                  customerForm.deliveryMethod === method
-                                    ? "bg-slate-950 text-white"
-                                    : "bg-[#fffaf5] text-slate-700 ring-1 ring-slate-100 hover:bg-rose-50"
-                                }`}
-                              >
-                                <Truck size={17} />
-                                {method}
-                              </button>
-                            )
-                          )}
-                        </div>
-                      </div>
+                      {needsDeliveryAddress && (
+                        <div className="rounded-2xl bg-[#fffaf5] p-3 ring-1 ring-slate-100">
+                          <div className="mb-3">
+                            <p className="text-sm font-black text-slate-950">
+                              Dirección de entrega
+                            </p>
+                            <p className="mt-1 text-xs font-bold text-slate-500">
+                              Completa los datos para enviar tu pedido.
+                            </p>
+                          </div>
 
-                      {customerForm.deliveryMethod === "Envío a domicilio" && (
-                        <label className="block">
-                          <span className="text-xs font-black uppercase text-slate-400">
-                            Dirección
-                          </span>
-                          <textarea
-                            value={customerForm.address}
-                            onChange={(event) =>
-                              updateCustomerForm("address", event.target.value)
-                            }
-                            className="mt-2 min-h-24 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300 focus:bg-white"
-                            placeholder="Calle, número, colonia y referencias"
-                          />
-                        </label>
+                          <div className="grid gap-3">
+                            <label className="block">
+                              <span className="text-xs font-black uppercase text-slate-400">
+                                Calle
+                              </span>
+                              <input
+                                value={customerForm.deliveryAddress.street}
+                                onChange={(event) =>
+                                  updateDeliveryAddress("street", event.target.value)
+                                }
+                                autoComplete="address-line1"
+                                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                placeholder="Hidalgo"
+                              />
+                            </label>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="block">
+                                <span className="text-xs font-black uppercase text-slate-400">
+                                  Número exterior
+                                </span>
+                                <input
+                                  value={customerForm.deliveryAddress.exteriorNumber}
+                                  onChange={(event) =>
+                                    updateDeliveryAddress(
+                                      "exteriorNumber",
+                                      event.target.value
+                                    )
+                                  }
+                                  autoComplete="address-line2"
+                                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                  placeholder="123"
+                                />
+                              </label>
+
+                              <label className="block">
+                                <span className="text-xs font-black uppercase text-slate-400">
+                                  Interior opcional
+                                </span>
+                                <input
+                                  value={customerForm.deliveryAddress.interiorNumber}
+                                  onChange={(event) =>
+                                    updateDeliveryAddress(
+                                      "interiorNumber",
+                                      event.target.value
+                                    )
+                                  }
+                                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                  placeholder="2B"
+                                />
+                              </label>
+                            </div>
+
+                            <label className="block">
+                              <span className="text-xs font-black uppercase text-slate-400">
+                                Colonia
+                              </span>
+                              <input
+                                value={customerForm.deliveryAddress.neighborhood}
+                                onChange={(event) =>
+                                  updateDeliveryAddress(
+                                    "neighborhood",
+                                    event.target.value
+                                  )
+                                }
+                                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                placeholder="Centro"
+                              />
+                            </label>
+
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <label className="block">
+                                <span className="text-xs font-black uppercase text-slate-400">
+                                  Municipio / Ciudad
+                                </span>
+                                <input
+                                  value={customerForm.deliveryAddress.city}
+                                  onChange={(event) =>
+                                    updateDeliveryAddress("city", event.target.value)
+                                  }
+                                  autoComplete="address-level2"
+                                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                  placeholder="Uriangato"
+                                />
+                              </label>
+
+                              <label className="block">
+                                <span className="text-xs font-black uppercase text-slate-400">
+                                  Estado
+                                </span>
+                                <input
+                                  value={customerForm.deliveryAddress.state}
+                                  onChange={(event) =>
+                                    updateDeliveryAddress("state", event.target.value)
+                                  }
+                                  autoComplete="address-level1"
+                                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                  placeholder="Ej. Guanajuato, Jalisco, Ciudad de México"
+                                />
+                              </label>
+                            </div>
+
+                            <label className="block sm:max-w-[11rem]">
+                              <span className="text-xs font-black uppercase text-slate-400">
+                                Código postal
+                              </span>
+                              <input
+                                value={customerForm.deliveryAddress.zipCode}
+                                onChange={(event) =>
+                                  updateDeliveryAddress(
+                                    "zipCode",
+                                    event.target.value.replace(/\D/g, "").slice(0, 5)
+                                  )
+                                }
+                                inputMode="numeric"
+                                maxLength={5}
+                                autoComplete="postal-code"
+                                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                placeholder="38980"
+                              />
+                            </label>
+
+                            <label className="block">
+                              <span className="text-xs font-black uppercase text-slate-400">
+                                Referencias de entrega
+                              </span>
+                              <textarea
+                                value={customerForm.deliveryAddress.references}
+                                onChange={(event) =>
+                                  updateDeliveryAddress(
+                                    "references",
+                                    event.target.value
+                                  )
+                                }
+                                rows={2}
+                                className="mt-2 min-h-16 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                                placeholder="Casa azul frente a la tienda"
+                              />
+                            </label>
+                          </div>
+                        </div>
                       )}
 
-                      <label className="block">
-                        <span className="text-xs font-black uppercase text-slate-400">
-                          Notas opcionales
-                        </span>
+                      {shipping.requiresQuote && (
+                        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-800 ring-1 ring-amber-100">
+                          El envío de pedidos grandes se confirma por WhatsApp.
+                        </p>
+                      )}
+
+                      <div className="rounded-2xl bg-[#fffaf5] p-3 ring-1 ring-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-rose-500 ring-1 ring-rose-100">
+                            <CreditCard size={18} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-slate-950">
+                              Forma de pago
+                            </p>
+                            <p className="mt-1 text-xs font-bold leading-5 text-slate-500">
+                              Puedes pagar ahora de forma segura o acordar detalles por WhatsApp.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {([
+                            { value: "pay_now", label: "Pagar ahora" },
+                            {
+                              value: "whatsapp",
+                              label: "Acordar por WhatsApp",
+                            },
+                          ] as const).map((option) => (
+                            <button
+                              key={option.value}
+                              type="button"
+                              onClick={() =>
+                                updateCustomerForm(
+                                  "paymentPreference",
+                                  option.value
+                                )
+                              }
+                              className={`rounded-2xl px-4 py-3 text-left text-sm font-black transition ${
+                                customerForm.paymentPreference === option.value
+                                  ? "bg-slate-950 text-white"
+                                  : "bg-white text-slate-700 ring-1 ring-slate-100 hover:bg-rose-50"
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {customerForm.paymentPreference === "pay_now" && (
+                          <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-slate-500 ring-1 ring-slate-100">
+                            La disponibilidad y el envío se validan con la tienda. Recibirás confirmación por WhatsApp.
+                          </p>
+                        )}
+                      </div>
+
+                      <details className="group rounded-2xl bg-[#fffaf5] p-3 ring-1 ring-slate-100">
+                        <summary className="cursor-pointer list-none text-sm font-black text-slate-700">
+                          + Agregar nota para la tienda
+                        </summary>
                         <textarea
                           value={customerForm.notes}
                           onChange={(event) =>
                             updateCustomerForm("notes", event.target.value)
                           }
-                          className="mt-2 min-h-20 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300 focus:bg-white"
-                          placeholder="Ej. Lo paso a recoger mañana."
+                          rows={2}
+                          className="mt-3 min-h-16 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
+                          placeholder="Ej. Tocar el timbre o entregar por la tarde."
                         />
-                      </label>
+                      </details>
                     </div>
                   )}
 
@@ -680,10 +1033,17 @@ ${customerForm.notes || "Sin notas."}`;
                         <p className="mt-1 text-sm font-black text-slate-950">
                           {customerForm.deliveryMethod}
                         </p>
-                        {customerForm.deliveryMethod === "Envío a domicilio" && (
-                          <p className="mt-1 text-xs font-bold leading-5 text-slate-500">
-                            {customerForm.address}
-                          </p>
+                        {confirmationAddressLines.length > 0 && (
+                          <dl className="mt-2 grid gap-1 text-xs font-bold leading-5 text-slate-500">
+                            {confirmationAddressLines.map((line) => (
+                              <div key={line.label} className="grid gap-0.5">
+                                <dt className="font-black text-slate-600">
+                                  {line.label}
+                                </dt>
+                                <dd>{line.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
                         )}
                       </div>
 
@@ -706,6 +1066,61 @@ ${customerForm.notes || "Sin notas."}`;
                             </p>
                           </div>
                         ))}
+                      </div>
+
+                      <div className="rounded-2xl bg-[#fffaf5] p-4">
+                        <div className="space-y-2 text-sm font-bold text-slate-600">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Subtotal</span>
+                            <span className="font-black text-slate-950">
+                              {formatPrice(subtotal)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Envío nacional</span>
+                            <span className="font-black text-slate-950">
+                              {shippingDisplay}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
+                            <span>Total</span>
+                            <span className="text-lg font-black text-slate-950">
+                              {formatPrice(total)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {shipping.requiresQuote && (
+                          <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
+                            El envío de pedidos grandes se confirma por WhatsApp.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl bg-[#fffaf5] p-4">
+                        <p className="text-xs font-black uppercase text-slate-400">
+                          Forma de pago
+                        </p>
+                        <p className="mt-1 text-sm font-black text-slate-950">
+                          {paymentPreferenceText}
+                        </p>
+                        <p className="mt-1 text-xs font-bold text-slate-500">
+                          Estado de pago: {paymentStatusText}
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl bg-white p-4 text-sm font-bold leading-6 text-slate-600 ring-1 ring-slate-100">
+                        <p>
+                          La disponibilidad y el envío se validan con la tienda. Recibirás confirmación por WhatsApp.
+                        </p>
+                        <p className="mt-2">
+                          Tu pedido se enviará a la dirección indicada.
+                        </p>
+                        {shipping.requiresQuote && (
+                          <p className="mt-2">
+                            El envío de pedidos grandes se confirma por WhatsApp.
+                          </p>
+                        )}
                       </div>
 
                       {customerForm.notes && (
@@ -743,25 +1158,52 @@ ${customerForm.notes || "Sin notas."}`;
                   </button>
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      if (confirmation.paymentPreference === "pay_now") {
+                        void handleStartPayment();
+                        return;
+                      }
+
                       window.open(
                         confirmation.whatsappUrl,
                         "_blank",
                         "noopener,noreferrer"
-                      )
-                    }
+                      );
+                    }}
+                    disabled={isStartingPayment}
                     className="w-full rounded-full bg-emerald-50 px-5 py-3 font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
                   >
-                    Abrir WhatsApp otra vez
+                    {confirmation.paymentPreference === "pay_now"
+                      ? isStartingPayment
+                        ? "Preparando pago..."
+                        : "Continuar al pago"
+                      : "Abrir WhatsApp otra vez"}
                   </button>
                 </div>
               ) : (
                 <>
-                  <div className="mb-4 flex items-center justify-between">
-                    <span className="text-slate-500">Total</span>
-                    <strong className="text-3xl text-slate-950">
-                      {formatPrice(total)}
-                    </strong>
+                  <div className="mb-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm font-bold text-slate-500">
+                      <span>Subtotal</span>
+                      <span className="text-slate-950">
+                        {formatPrice(subtotal)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm font-bold text-slate-500">
+                      <span>Envío nacional</span>
+                      <span className="text-slate-950">{shippingDisplay}</span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-rose-100 pt-2">
+                      <span className="text-slate-500">Total</span>
+                      <strong className="text-3xl text-slate-950">
+                        {formatPrice(total)}
+                      </strong>
+                    </div>
+                    {shipping.requiresQuote && (
+                      <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
+                        El envío de pedidos grandes se confirma por WhatsApp.
+                      </p>
+                    )}
                   </div>
 
                   <div className="grid gap-3">
@@ -798,8 +1240,10 @@ ${customerForm.notes || "Sin notas."}`;
                       >
                         <Send size={18} />
                         {isSubmitting
-                          ? "Enviando pedido..."
-                          : "Enviar pedido por WhatsApp"}
+                          ? "Guardando pedido..."
+                          : customerForm.paymentPreference === "pay_now"
+                            ? "Continuar al pago"
+                            : "Enviar pedido por WhatsApp"}
                       </button>
                     )}
 

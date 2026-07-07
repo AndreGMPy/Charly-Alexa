@@ -10,9 +10,11 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
@@ -209,8 +211,22 @@ export async function cleanupDuplicateBaseCategories() {
 }
 
 export async function getActiveCategories() {
-  const categories = await getUniqueMainCategories();
-  return categories.filter((category) => category.isActive);
+  if (!isFirebaseConfigured || !db) {
+    return BASE_CATEGORIES.map((category) => ({
+      ...category,
+      id: BASE_CATEGORY_IDS[category.name],
+      createdAt: "",
+      updatedAt: "",
+    }));
+  }
+
+  const categoriesQuery = query(
+    collection(db, CATEGORIES_COLLECTION),
+    where("isActive", "==", true)
+  );
+  const snapshot = await getDocs(categoriesQuery);
+
+  return sortByOrderThenName(snapshot.docs.map(mapCategoryDoc));
 }
 
 export async function createCategory(category: CategoryCreateInput) {
@@ -251,8 +267,22 @@ export async function getSubcategories() {
 }
 
 export async function getSubcategoriesByCategory(
-  category: MainCategoryName
+  category: MainCategoryName,
+  options: { activeOnly?: boolean } = {}
 ) {
+  if (options.activeOnly) {
+    if (!isFirebaseConfigured || !db) return [];
+
+    const subcategoriesQuery = query(
+      collection(db, SUBCATEGORIES_COLLECTION),
+      where("parentCategory", "==", category),
+      where("isActive", "==", true)
+    );
+    const snapshot = await getDocs(subcategoriesQuery);
+
+    return sortByOrderThenName(snapshot.docs.map(mapSubcategoryDoc));
+  }
+
   const subcategories = await getSubcategories();
 
   return subcategories.filter(

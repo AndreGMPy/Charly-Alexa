@@ -28,6 +28,10 @@ export type ProductUpdateInput = Partial<
 
 const PRODUCTS_COLLECTION = "products";
 
+let activeProductsCache: FirebaseProduct[] | null = null;
+let activeProductsPromise: Promise<FirebaseProduct[]> | null = null;
+const productBySlugCache = new Map<string, FirebaseProduct | null>();
+
 function ensureFirebaseConfigured() {
   if (!isFirebaseConfigured || !db) {
     throw new Error("La tienda no está conectada.");
@@ -51,6 +55,7 @@ function mapProductDoc(
     subcategory: data.subcategory ?? "",
     price: data.price ?? 0,
     basePrice: data.basePrice,
+    paymentFeePercent: data.paymentFeePercent,
     sizes: data.sizes ?? [],
     colors: data.colors ?? [],
     stock: data.stock ?? 0,
@@ -93,6 +98,39 @@ function getDateValue(value: FirebaseProduct["createdAt"]) {
   return 0;
 }
 
+function rememberActiveProducts(products: FirebaseProduct[]) {
+  activeProductsCache = products;
+  productBySlugCache.clear();
+
+  for (const product of products) {
+    if (product.slug) {
+      productBySlugCache.set(product.slug, product);
+    }
+  }
+}
+
+function clearProductSessionCache() {
+  activeProductsCache = null;
+  activeProductsPromise = null;
+  productBySlugCache.clear();
+}
+
+export function getCachedActiveProducts() {
+  return activeProductsCache ?? [];
+}
+
+export function getCachedActiveProductBySlug(slug: string) {
+  if (productBySlugCache.has(slug)) {
+    return productBySlugCache.get(slug) ?? null;
+  }
+
+  if (activeProductsCache) {
+    return activeProductsCache.find((product) => product.slug === slug) ?? null;
+  }
+
+  return null;
+}
+
 export async function getProducts() {
   if (!isFirebaseConfigured || !db) return [];
 
@@ -103,9 +141,33 @@ export async function getProducts() {
     .sort((a, b) => getDateValue(b.createdAt) - getDateValue(a.createdAt));
 }
 
-export async function getActiveProducts() {
-  const products = await getProducts();
-  return products.filter((product) => product.isActive);
+export async function getActiveProducts(
+  options: { forceRefresh?: boolean } = {}
+) {
+  if (!isFirebaseConfigured || !db) return [];
+  if (!options.forceRefresh && activeProductsCache) return activeProductsCache;
+  if (!options.forceRefresh && activeProductsPromise) return activeProductsPromise;
+
+  activeProductsPromise = (async () => {
+    const productsQuery = query(
+      collection(db, PRODUCTS_COLLECTION),
+      where("isActive", "==", true)
+    );
+    const snapshot = await getDocs(productsQuery);
+
+    const products = snapshot.docs
+      .map(mapProductDoc)
+      .sort((a, b) => getDateValue(b.createdAt) - getDateValue(a.createdAt));
+
+    rememberActiveProducts(products);
+    return products;
+  })();
+
+  try {
+    return await activeProductsPromise;
+  } finally {
+    activeProductsPromise = null;
+  }
 }
 
 export async function getProductsBySubcategory(
@@ -124,16 +186,28 @@ export async function getProductsBySubcategory(
 
 export async function getProductBySlug(slug: string) {
   if (!isFirebaseConfigured || !db) return null;
+  if (productBySlugCache.has(slug)) {
+    return productBySlugCache.get(slug) ?? null;
+  }
 
+  const cachedProduct = getCachedActiveProductBySlug(slug);
+  if (cachedProduct) return cachedProduct;
+  if (activeProductsCache) return null;
+
+  // Firestore Standard supports merging single-field indexes for equality filters.
   const productsQuery = query(
     collection(db, PRODUCTS_COLLECTION),
     where("slug", "==", slug),
+    where("isActive", "==", true),
     limit(1)
   );
   const snapshot = await getDocs(productsQuery);
   const product = snapshot.docs[0];
 
-  return product ? mapProductDoc(product) : null;
+  const mappedProduct = product ? mapProductDoc(product) : null;
+  productBySlugCache.set(slug, mappedProduct);
+
+  return mappedProduct;
 }
 
 export async function createProduct(product: ProductCreateInput) {
@@ -158,6 +232,7 @@ export async function createProduct(product: ProductCreateInput) {
     productPayload
   );
 
+  clearProductSessionCache();
   return docRef.id;
 }
 
@@ -169,6 +244,7 @@ export async function updateProduct(id: string, data: ProductUpdateInput) {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  clearProductSessionCache();
 }
 
 export async function deleteProduct(id: string) {
@@ -182,4 +258,5 @@ export async function deleteProduct(id: string) {
   }
 
   await deleteDoc(productRef);
+  clearProductSessionCache();
 }

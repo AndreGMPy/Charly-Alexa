@@ -5,6 +5,7 @@ import {
   uploadImageToStorage,
   type UploadedImage,
 } from "@/lib/firebase-services/storage";
+import { getSafeUploadMessage, logErrorInDevelopment } from "@/lib/safe-errors";
 import {
   ArrowDown,
   ArrowUp,
@@ -78,9 +79,8 @@ export function ImageUploadField({
         description: `Antes ${(uploaded.originalSize / 1024 / 1024).toFixed(1)} MB · Ahora ${(uploaded.uploadedSize / 1024 / 1024).toFixed(1)} MB`,
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "No se pudo subir la imagen.";
-      toast.error(message);
+      logErrorInDevelopment("Single image upload error", error);
+      toast.error(getSafeUploadMessage(error));
     } finally {
       setIsUploading(false);
     }
@@ -187,9 +187,8 @@ export function GalleryUploadField({
         files.length === 1 ? "Imagen optimizada y agregada" : "Imágenes optimizadas y agregadas"
       );
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "No se pudieron subir las imágenes.";
-      toast.error(message);
+      logErrorInDevelopment("Gallery image upload error", error);
+      toast.error(getSafeUploadMessage(error));
     } finally {
       setIsUploading(false);
     }

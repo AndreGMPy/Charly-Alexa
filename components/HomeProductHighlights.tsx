@@ -1,21 +1,44 @@
 "use client";
 
-import ProductCard from "@/components/ProductCard";
+import ProductCard, { ProductCardSkeleton } from "@/components/ProductCard";
 import { getHomepageSettings } from "@/lib/firebase-services/homepage";
-import { getActiveProducts } from "@/lib/firebase-services/products";
+import {
+  getActiveProducts,
+  getCachedActiveProducts,
+} from "@/lib/firebase-services/products";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
 import { getFeaturedOffers } from "@/lib/products";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+function getCachedFeaturedOffers() {
+  const cachedProducts = getCachedActiveProducts();
+
+  return cachedProducts
+    .filter((product) => product.isFeatured || product.isOffer)
+    .sort((a, b) => a.featuredOrder - b.featuredOrder)
+    .slice(0, 5)
+    .map(mapFirebaseProductToProduct);
+}
+
 export default function HomeProductHighlights() {
-  const [featuredOffers, setFeaturedOffers] = useState(getFeaturedOffers());
+  const [featuredOffers, setFeaturedOffers] = useState(() => {
+    const cachedOffers = getCachedFeaturedOffers();
+    return cachedOffers.length > 0 ? cachedOffers : getFeaturedOffers();
+  });
+  const [isLoading, setIsLoading] = useState(
+    () => getCachedActiveProducts().length === 0 && featuredOffers.length === 0
+  );
 
   useEffect(() => {
     let isCurrent = true;
 
     async function loadFeaturedOffers() {
+      if (featuredOffers.length === 0) {
+        setIsLoading(true);
+      }
+
       try {
         const [homepageSettings, firebaseProducts] = await Promise.all([
           getHomepageSettings(),
@@ -48,6 +71,10 @@ export default function HomeProductHighlights() {
         );
       } catch {
         // Keep the fallback offers if saved products are not available.
+      } finally {
+        if (isCurrent) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -56,9 +83,9 @@ export default function HomeProductHighlights() {
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [featuredOffers.length]);
 
-  if (featuredOffers.length === 0) {
+  if (!isLoading && featuredOffers.length === 0) {
     return null;
   }
 
@@ -77,13 +104,26 @@ export default function HomeProductHighlights() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
-          {featuredOffers.map((product, index) => (
-            <div key={product.id} className={index === 4 ? "hidden lg:block" : ""}>
-              <ProductCard product={product} compact />
-            </div>
-          ))}
-        </div>
+        {isLoading && featuredOffers.length === 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                key={`home-product-skeleton-${index}`}
+                className={index === 4 ? "hidden lg:block" : ""}
+              >
+                <ProductCardSkeleton compact />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5">
+            {featuredOffers.map((product, index) => (
+              <div key={product.id} className={index === 4 ? "hidden lg:block" : ""}>
+                <ProductCard product={product} compact />
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-5 grid grid-cols-2 gap-2 sm:mt-6 sm:flex sm:justify-center">
           <Link
