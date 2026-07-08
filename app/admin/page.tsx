@@ -360,11 +360,11 @@ export default function AdminDashboardPage() {
 
   return (
     <section className="space-y-4 sm:space-y-6">
-      <div className="rounded-[1.5rem] bg-gradient-to-br from-rose-50 via-white to-sky-50 p-4 shadow-sm ring-1 ring-rose-100 sm:rounded-[2rem] sm:p-7">
+      <div className="rounded-[1.25rem] bg-gradient-to-br from-rose-50 via-white to-sky-50 p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[2rem] sm:p-7">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-500">
           Dashboard
         </p>
-        <h1 className="mt-1 text-2xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
+          <h1 className="mt-1 text-xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
           Panel vendedor
         </h1>
         <p className="mt-1 text-sm font-medium leading-6 text-slate-500 sm:hidden">
@@ -378,7 +378,7 @@ export default function AdminDashboardPage() {
           <p className="mb-3 text-xs font-black uppercase tracking-[0.18em] text-slate-400">
             Acciones rápidas
           </p>
-          <div className="flex flex-wrap gap-2 sm:gap-3">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-3">
             {quickActions.map((action) => {
               const Icon = action.icon;
 
@@ -386,7 +386,7 @@ export default function AdminDashboardPage() {
                 <Link
                   key={action.label}
                   href={action.href}
-                  className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-3 py-2 text-xs font-black shadow-sm transition sm:px-5 sm:py-3 sm:text-sm ${action.className}`}
+                  className={`inline-flex min-h-9 min-w-0 items-center justify-center gap-1.5 rounded-full px-3 py-2 text-xs font-black shadow-sm transition sm:min-h-10 sm:gap-2 sm:px-5 sm:py-3 sm:text-sm ${action.className}`}
                 >
                   <Icon size={17} />
                   {action.label}
@@ -403,24 +403,24 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
         {salesCards.map((stat) => {
           const Icon = stat.icon;
 
           return (
             <article
               key={stat.label}
-              className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-5"
+              className="min-w-0 rounded-[1.1rem] bg-white p-2.5 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-5"
             >
               <div
                 className={`flex h-9 w-9 items-center justify-center rounded-2xl ring-1 sm:h-12 sm:w-12 ${stat.className}`}
               >
                 <Icon size={18} />
               </div>
-              <p className="mt-3 text-xs font-black text-slate-500 sm:mt-5 sm:text-sm">
+              <p className="mt-2 text-[11px] font-black text-slate-500 sm:mt-5 sm:text-sm">
                 {stat.label}
               </p>
-              <p className="mt-1 break-words text-xl font-black text-slate-950 sm:text-3xl">
+              <p className="mt-1 break-words text-lg font-black text-slate-950 sm:text-3xl">
                 {isLoading ? "..." : stat.value}
               </p>
               <p className="mt-1 line-clamp-2 text-[11px] font-bold text-slate-500 sm:text-xs">
@@ -431,8 +431,8 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-[1.75rem] bg-white p-5 shadow-sm ring-1 ring-rose-100 sm:p-6">
+      <div className="grid gap-3 sm:gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <section className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-500">
@@ -496,7 +496,7 @@ export default function AdminDashboardPage() {
           )}
         </section>
 
-        <section className="rounded-[1.75rem] bg-white p-5 shadow-sm ring-1 ring-rose-100 sm:p-6">
+        <section className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
           <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-500">
             Ventas por periodo
           </p>

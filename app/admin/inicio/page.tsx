@@ -28,7 +28,7 @@ const defaultHomepage: HomepageSettingsInput = {
 };
 
 const fieldClass =
-  "w-full rounded-2xl border border-rose-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-4 focus:ring-rose-100";
+  "w-full min-w-0 rounded-xl border border-rose-100 bg-white px-3 py-2 text-[16px] font-bold text-slate-800 outline-none transition placeholder:text-slate-300 placeholder:opacity-70 focus:border-rose-300 focus:ring-4 focus:ring-rose-100 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm";
 
 const labelClass = "text-xs font-black uppercase tracking-wide text-slate-500";
 
@@ -246,26 +246,26 @@ export default function AdminHomePage() {
   }
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-rose-500">
             Inicio
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">
+          <h1 className="mt-1 text-xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
             Portada
           </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500">
+          <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-500 sm:mt-2">
             Cambia el texto principal y elige qué productos aparecen primero en
             la tienda.
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="grid gap-2 sm:flex sm:flex-wrap">
           <button
             type="button"
             onClick={() => void loadHome()}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50"
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:px-5 sm:py-3 sm:text-sm"
           >
             <RefreshCw size={17} />
             Actualizar
@@ -275,7 +275,7 @@ export default function AdminHomePage() {
             type="button"
             onClick={() => void handleSave()}
             disabled={isSaving}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:px-6 sm:py-3 sm:text-sm"
           >
             <Save size={17} />
             {isSaving ? "Guardando" : "Guardar portada"}
@@ -289,7 +289,7 @@ export default function AdminHomePage() {
         </div>
       )}
 
-      <div className="rounded-[1.75rem] bg-white p-5 shadow-sm ring-1 ring-rose-100 sm:p-6">
+      <div className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 ring-1 ring-rose-100">
             <Home size={22} />
@@ -344,7 +344,7 @@ export default function AdminHomePage() {
                 updateSetting("heroTitle", event.target.value)
               }
               className={fieldClass}
-              placeholder="Nueva temporada para niñas y niños."
+              placeholder="Ej. Nueva temporada para niñas y niños."
             />
           </label>
 
@@ -356,7 +356,7 @@ export default function AdminHomePage() {
                 updateSetting("heroSubtitle", event.target.value)
               }
               className={`${fieldClass} min-h-24 resize-none`}
-              placeholder="Ropa infantil cómoda..."
+              placeholder="Ej. Ropa infantil cómoda..."
             />
           </label>
 
@@ -368,7 +368,7 @@ export default function AdminHomePage() {
                 updateSetting("girlButtonText", event.target.value)
               }
               className={fieldClass}
-              placeholder="Ver Niña"
+              placeholder="Ej. Ver Niña"
             />
           </label>
 
@@ -380,13 +380,13 @@ export default function AdminHomePage() {
                 updateSetting("boyButtonText", event.target.value)
               }
               className={fieldClass}
-              placeholder="Ver Niño"
+              placeholder="Ej. Ver Niño"
             />
           </label>
         </div>
       </div>
 
-      <div className="rounded-[1.75rem] bg-white p-5 shadow-sm ring-1 ring-rose-100 sm:p-6">
+      <div className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
         <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-500">

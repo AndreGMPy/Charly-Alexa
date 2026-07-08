@@ -377,8 +377,48 @@ ${customerForm.notes || "Sin notas."}`;
     increaseItem(item.id);
   }
 
+  async function startPaymentForOrder(orderId: string) {
+    let didRedirect = false;
+
+    try {
+      setIsStartingPayment(true);
+      const response = await fetch(
+        "/api/payments/mercadopago/create-preference",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ orderId }),
+        }
+      );
+      const responseBody = (await response.json().catch(() => null)) as
+        | { message?: string; initPoint?: string }
+        | null;
+
+      if (!response.ok || !responseBody?.initPoint) {
+        throw new Error(
+          responseBody?.message ?? "No se pudo iniciar el pago. Intenta de nuevo."
+        );
+      }
+
+      clearCart();
+      didRedirect = true;
+      window.location.assign(responseBody.initPoint);
+      return true;
+    } catch (error) {
+      logErrorInDevelopment("Mercado Pago preference error", error);
+      toast.error(getSafePaymentMessage(error));
+      return false;
+    } finally {
+      if (!didRedirect) {
+        setIsStartingPayment(false);
+      }
+    }
+  }
+
   async function handleConfirmOrder() {
-    if (submitLockRef.current || isSubmitting) return;
+    if (submitLockRef.current || isSubmitting || isStartingPayment) return;
 
     submitLockRef.current = true;
 
@@ -395,9 +435,15 @@ ${customerForm.notes || "Sin notas."}`;
       customerForm.paymentPreference === "pay_now"
         ? { status: "pending" as const, provider: "mercadopago" as const }
         : { status: "manual" as const, provider: "manual" as const };
+    const shouldPayNow = customerForm.paymentPreference === "pay_now";
+    let didStartPayment = false;
 
     try {
       setIsSubmitting(true);
+      if (shouldPayNow) {
+        setIsStartingPayment(true);
+      }
+
       const cleanDeliveryAddress = getCleanDeliveryAddress();
       const formattedDeliveryAddress =
         needsDeliveryAddress
@@ -420,12 +466,11 @@ ${customerForm.notes || "Sin notas."}`;
         wholesaleValidation,
       });
 
-      toast.success("Pedido confirmado", {
-        description:
-          customerForm.paymentPreference === "pay_now"
-            ? `Folio #${result.orderNumber}. Ya puedes continuar al pago.`
-            : `Folio #${result.orderNumber}. Se abrirá WhatsApp para confirmarlo.`,
-      });
+      if (!shouldPayNow) {
+        toast.success("Pedido confirmado", {
+          description: `Folio #${result.orderNumber}. Se abrirá WhatsApp para confirmarlo.`,
+        });
+      }
 
       const whatsappUrl = buildWhatsAppUrlWithNumber(
         settings.whatsappInternational,
@@ -438,15 +483,22 @@ ${customerForm.notes || "Sin notas."}`;
         )
       );
 
-      clearCart();
-      setConfirmation({
+      const nextConfirmation = {
         orderId: result.id,
         orderNumber: result.orderNumber,
         whatsappUrl,
         paymentPreference: customerForm.paymentPreference,
-      });
+      };
+
+      setConfirmation(nextConfirmation);
       setStep(1);
 
+      if (shouldPayNow) {
+        didStartPayment = await startPaymentForOrder(result.id);
+        return;
+      }
+
+      clearCart();
       if (customerForm.paymentPreference === "whatsapp") {
         window.open(whatsappUrl, "_blank", "noopener,noreferrer");
       }
@@ -454,6 +506,9 @@ ${customerForm.notes || "Sin notas."}`;
       logErrorInDevelopment("Checkout order error", error);
       toast.error(getSafeOrderMessage(error));
     } finally {
+      if (!didStartPayment) {
+        setIsStartingPayment(false);
+      }
       setIsSubmitting(false);
       submitLockRef.current = false;
     }
@@ -462,35 +517,7 @@ ${customerForm.notes || "Sin notas."}`;
   async function handleStartPayment() {
     if (!confirmation || isStartingPayment) return;
 
-    try {
-      setIsStartingPayment(true);
-      const response = await fetch(
-        "/api/payments/mercadopago/create-preference",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ orderId: confirmation.orderId }),
-        }
-      );
-      const responseBody = (await response.json().catch(() => null)) as
-        | { message?: string; initPoint?: string }
-        | null;
-
-      if (!response.ok || !responseBody?.initPoint) {
-        throw new Error(
-          responseBody?.message ?? "No se pudo iniciar el pago. Intenta de nuevo."
-        );
-      }
-
-      window.location.href = responseBody.initPoint;
-    } catch (error) {
-      logErrorInDevelopment("Mercado Pago preference error", error);
-      toast.error(getSafePaymentMessage(error));
-    } finally {
-      setIsStartingPayment(false);
-    }
+    await startPaymentForOrder(confirmation.orderId);
   }
 
   const validationMessages = [
@@ -543,7 +570,7 @@ ${customerForm.notes || "Sin notas."}`;
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 pb-64 sm:pb-44">
+            <div className="flex-1 overflow-y-auto p-5 pb-56 sm:pb-40">
               {confirmation ? (
                 <div className="flex min-h-full flex-col items-center justify-center text-center">
                   <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-[2rem] bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
@@ -1139,20 +1166,20 @@ ${customerForm.notes || "Sin notas."}`;
               )}
             </div>
 
-            <div className="shrink-0 border-t border-rose-100 bg-white/85 p-5">
+            <div className="shrink-0 border-t border-rose-100 bg-white/90 p-3 shadow-[0_-10px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-4">
               {confirmation ? (
-                <div className="grid gap-3">
+                <div className="grid gap-2">
                   <button
                     type="button"
                     onClick={handleCloseCart}
-                    className="w-full rounded-full bg-slate-950 px-5 py-4 font-black text-white shadow-lg shadow-slate-200 transition hover:bg-slate-800"
+                    className="w-full rounded-full bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-sm shadow-slate-200 transition hover:bg-slate-800"
                   >
                     Cerrar
                   </button>
                   <button
                     type="button"
                     onClick={handleCloseCart}
-                    className="w-full rounded-full bg-white px-5 py-3 font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
+                    className="w-full rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
                   >
                     Volver a la tienda
                   </button>
@@ -1171,7 +1198,7 @@ ${customerForm.notes || "Sin notas."}`;
                       );
                     }}
                     disabled={isStartingPayment}
-                    className="w-full rounded-full bg-emerald-50 px-5 py-3 font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100"
+                    className="w-full rounded-full bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     {confirmation.paymentPreference === "pay_now"
                       ? isStartingPayment
@@ -1182,31 +1209,33 @@ ${customerForm.notes || "Sin notas."}`;
                 </div>
               ) : (
                 <>
-                  <div className="mb-4 space-y-2">
-                    <div className="flex items-center justify-between text-sm font-bold text-slate-500">
+                  <div className="mb-3 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
                       <span>Subtotal</span>
                       <span className="text-slate-950">
                         {formatPrice(subtotal)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between text-sm font-bold text-slate-500">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
                       <span>Envío nacional</span>
                       <span className="text-slate-950">{shippingDisplay}</span>
                     </div>
-                    <div className="flex items-center justify-between border-t border-rose-100 pt-2">
-                      <span className="text-slate-500">Total</span>
-                      <strong className="text-3xl text-slate-950">
+                    <div className="flex items-center justify-between border-t border-rose-100 pt-1.5">
+                      <span className="text-sm font-black text-slate-600">
+                        Total
+                      </span>
+                      <strong className="text-xl font-black text-slate-950 sm:text-2xl">
                         {formatPrice(total)}
                       </strong>
                     </div>
                     {shipping.requiresQuote && (
-                      <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
+                      <p className="rounded-2xl bg-amber-50 px-3 py-1.5 text-[11px] font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
                         El envío de pedidos grandes se confirma por WhatsApp.
                       </p>
                     )}
                   </div>
 
-                  <div className="grid gap-3">
+                  <div className="grid gap-2">
                     {step > 1 && (
                       <button
                         type="button"
@@ -1215,7 +1244,7 @@ ${customerForm.notes || "Sin notas."}`;
                             Math.max(current - 1, 1) as CheckoutStep
                           )
                         }
-                        className="flex items-center justify-center gap-2 rounded-full bg-white px-5 py-3 font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
+                        className="flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
                       >
                         <ChevronLeft size={18} />
                         Regresar
@@ -1227,7 +1256,7 @@ ${customerForm.notes || "Sin notas."}`;
                         type="button"
                         onClick={handleNextStep}
                         disabled={items.length === 0 || !canContinue}
-                        className="rounded-full bg-rose-500 px-5 py-4 font-black text-white shadow-lg shadow-rose-100 transition hover:scale-[1.02] hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                        className="rounded-full bg-rose-500 px-4 py-3 text-sm font-black text-white shadow-md shadow-rose-100 transition hover:scale-[1.01] hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
                       >
                         Continuar
                       </button>
@@ -1235,12 +1264,23 @@ ${customerForm.notes || "Sin notas."}`;
                       <button
                         type="button"
                         onClick={() => void handleConfirmOrder()}
-                        disabled={isSubmitting || items.length === 0 || !canContinue}
-                        className="flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-4 font-black text-white shadow-lg shadow-emerald-100 transition hover:scale-[1.02] hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                        disabled={
+                          isSubmitting ||
+                          isStartingPayment ||
+                          items.length === 0 ||
+                          !canContinue
+                        }
+                        className="flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-4 py-3 text-sm font-black text-white shadow-md shadow-emerald-100 transition hover:scale-[1.01] hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
                       >
-                        <Send size={18} />
+                        {customerForm.paymentPreference === "pay_now" ? (
+                          <CreditCard size={17} />
+                        ) : (
+                          <Send size={17} />
+                        )}
                         {isSubmitting
-                          ? "Guardando pedido..."
+                          ? customerForm.paymentPreference === "pay_now"
+                            ? "Preparando pago..."
+                            : "Guardando pedido..."
                           : customerForm.paymentPreference === "pay_now"
                             ? "Continuar al pago"
                             : "Enviar pedido por WhatsApp"}
@@ -1250,7 +1290,7 @@ ${customerForm.notes || "Sin notas."}`;
                     <button
                       type="button"
                       onClick={closeCart}
-                      className="rounded-full bg-white px-5 py-3 font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
+                      className="rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
                     >
                       Seguir comprando
                     </button>
@@ -1261,7 +1301,7 @@ ${customerForm.notes || "Sin notas."}`;
                         clearCart();
                         resetCartState();
                       }}
-                      className="rounded-full bg-slate-100 px-5 py-3 font-black text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:text-slate-400"
+                      className="rounded-full bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:text-slate-400"
                       disabled={items.length === 0}
                     >
                       Vaciar carrito
@@ -1270,6 +1310,27 @@ ${customerForm.notes || "Sin notas."}`;
                 </>
               )}
             </div>
+
+            <AnimatePresence>
+              {isStartingPayment && (
+                <motion.div
+                  className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 px-6 backdrop-blur-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <div className="w-full max-w-xs rounded-[1.5rem] bg-white px-6 py-7 text-center shadow-xl ring-1 ring-emerald-100">
+                    <div className="mx-auto h-11 w-11 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-500" />
+                    <h3 className="mt-4 text-lg font-black text-slate-950">
+                      Preparando tu pago...
+                    </h3>
+                    <p className="mt-2 text-sm font-bold leading-6 text-slate-500">
+                      Te redirigiremos de forma segura a Mercado Pago.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.aside>
         </>
       )}

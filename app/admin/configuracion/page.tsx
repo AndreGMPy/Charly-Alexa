@@ -31,7 +31,7 @@ const defaultSettings: SiteSettingsInput = {
 };
 
 const fieldClass =
-  "w-full rounded-2xl border border-rose-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-4 focus:ring-rose-100";
+  "w-full min-w-0 rounded-xl border border-rose-100 bg-white px-3 py-2 text-[16px] font-bold text-slate-800 outline-none transition placeholder:text-slate-300 placeholder:opacity-70 focus:border-rose-300 focus:ring-4 focus:ring-rose-100 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm";
 
 const labelClass = "text-xs font-black uppercase tracking-wide text-slate-500";
 
@@ -130,16 +130,16 @@ export default function AdminSettingsPage() {
   }
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <section className="space-y-4 sm:space-y-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-rose-500">
             Tienda
           </p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">
+          <h1 className="mt-1 text-xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
             Datos de tienda
           </h1>
-          <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-500">
+          <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-500 sm:mt-2">
             Edita la información visible para tus clientas: contacto, horario,
             entrega, pagos y redes sociales.
           </p>
@@ -149,7 +149,7 @@ export default function AdminSettingsPage() {
           type="button"
           onClick={() => void handleSave()}
           disabled={isSaving}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:px-6 sm:py-3 sm:text-sm"
         >
           <Save size={17} />
           {isSaving ? "Guardando" : "Guardar cambios"}
@@ -162,7 +162,7 @@ export default function AdminSettingsPage() {
         </div>
       )}
 
-      <div className="rounded-[1.75rem] bg-white p-5 shadow-sm ring-1 ring-rose-100 sm:p-6">
+      <div className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 ring-1 ring-rose-100">
             <Store size={22} />
@@ -186,7 +186,7 @@ export default function AdminSettingsPage() {
                 updateField("storeName", event.target.value)
               }
               className={fieldClass}
-              placeholder="Charly Alexa"
+              placeholder="Ej. Charly Alexa"
             />
           </label>
 
@@ -196,7 +196,7 @@ export default function AdminSettingsPage() {
               value={form.slogan}
               onChange={(event) => updateField("slogan", event.target.value)}
               className={fieldClass}
-              placeholder="Tienda online infantil"
+              placeholder="Ej. Tienda online infantil"
             />
           </label>
 
@@ -208,7 +208,7 @@ export default function AdminSettingsPage() {
                 updateField("shortDescription", event.target.value)
               }
               className={`${fieldClass} min-h-24 resize-none`}
-              placeholder="Ropa infantil para niñas y niños..."
+              placeholder="Ej. Ropa infantil para niñas y niños..."
             />
           </label>
 
@@ -238,7 +238,7 @@ export default function AdminSettingsPage() {
               value={form.whatsapp}
               onChange={(event) => updateField("whatsapp", event.target.value)}
               className={fieldClass}
-              placeholder="445 144 8846"
+              placeholder="Ej. 445 144 8846"
             />
           </label>
 
@@ -248,7 +248,7 @@ export default function AdminSettingsPage() {
               value={form.hours}
               onChange={(event) => updateField("hours", event.target.value)}
               className={fieldClass}
-              placeholder="Lunes a sábado de 10:00 a 19:00"
+              placeholder="Ej. Lunes a sábado de 10:00 a 19:00"
             />
           </label>
 
@@ -258,7 +258,7 @@ export default function AdminSettingsPage() {
               value={form.address}
               onChange={(event) => updateField("address", event.target.value)}
               className={fieldClass}
-              placeholder="Dirección de la tienda"
+              placeholder="Ej. Dirección de la tienda"
             />
           </label>
 
@@ -270,7 +270,7 @@ export default function AdminSettingsPage() {
                 updateField("deliveryText", event.target.value)
               }
               className={`${fieldClass} min-h-24 resize-none`}
-              placeholder="Envío nacional a la dirección indicada..."
+              placeholder="Ej. Envío nacional a la dirección indicada..."
             />
           </label>
 
@@ -282,13 +282,13 @@ export default function AdminSettingsPage() {
                 updateField("paymentText", event.target.value)
               }
               className={`${fieldClass} min-h-24 resize-none`}
-              placeholder="Pago en línea seguro o acuerdo por WhatsApp..."
+              placeholder="Ej. Pago en línea seguro o acuerdo por WhatsApp..."
             />
           </label>
         </div>
       </div>
 
-      <div className="rounded-[1.75rem] bg-white p-5 shadow-sm ring-1 ring-rose-100 sm:p-6">
+      <div className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
         <div className="mb-5">
           <h2 className="text-lg font-black text-slate-950">
             Redes sociales
@@ -307,7 +307,7 @@ export default function AdminSettingsPage() {
                 updateSocialField("instagram", event.target.value)
               }
               className={fieldClass}
-              placeholder="@charlyalexa"
+              placeholder="Ej. @charlyalexa"
             />
           </label>
 
@@ -319,7 +319,7 @@ export default function AdminSettingsPage() {
                 updateSocialField("facebook", event.target.value)
               }
               className={fieldClass}
-              placeholder="Charly Alexa"
+              placeholder="Ej. Charly Alexa"
             />
           </label>
 
@@ -331,7 +331,7 @@ export default function AdminSettingsPage() {
                 updateSocialField("tiktok", event.target.value)
               }
               className={fieldClass}
-              placeholder="@charlyalexa"
+              placeholder="Ej. @charlyalexa"
             />
           </label>
 
@@ -343,7 +343,7 @@ export default function AdminSettingsPage() {
                 updateSocialField("whatsapp", event.target.value)
               }
               className={fieldClass}
-              placeholder="524451448846"
+              placeholder="Ej. 524451448846"
             />
           </label>
         </div>

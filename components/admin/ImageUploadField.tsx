@@ -37,7 +37,8 @@ type GalleryUploadFieldProps = {
   previewFit?: "cover" | "contain";
 };
 
-const labelClass = "text-xs font-black uppercase tracking-wide text-slate-500";
+const labelClass =
+  "text-[10px] font-black uppercase tracking-wide text-slate-500 sm:text-xs";
 
 function cleanGalleryUrls(urls: string[]) {
   return urls.map((url) => url.trim()).filter(Boolean);
@@ -64,6 +65,7 @@ export function ImageUploadField({
 }: ImageUploadFieldProps) {
   const inputId = useId();
   const [isUploading, setIsUploading] = useState(false);
+  const isMainPhoto = label.toLowerCase().includes("principal");
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -87,12 +89,12 @@ export function ImageUploadField({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-1.5 sm:space-y-2">
       <span className={labelClass}>{label}</span>
 
-      <div className="overflow-hidden rounded-2xl border border-rose-100 bg-[#fffaf5]">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-rose-100 bg-[#fffaf5] sm:rounded-2xl">
         {value ? (
-          <div className={`relative ${previewClassName}`}>
+          <div className={`relative min-w-0 ${previewClassName}`}>
             {previewFit === "contain" ? (
               <ProductImageFrame
                 src={value}
@@ -111,7 +113,7 @@ export function ImageUploadField({
             <button
               type="button"
               onClick={() => onChange("")}
-              className="absolute bottom-3 right-3 inline-flex items-center justify-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-black text-rose-600 shadow-sm transition hover:bg-rose-50"
+              className="absolute bottom-2 right-2 inline-flex items-center justify-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-black text-rose-600 shadow-sm transition hover:bg-rose-50 sm:bottom-3 sm:right-3"
             >
               <Trash2 size={14} />
               Quitar
@@ -120,9 +122,9 @@ export function ImageUploadField({
         ) : (
           <label
             htmlFor={inputId}
-            className="flex min-h-40 cursor-pointer flex-col items-center justify-center gap-2 px-4 py-6 text-center transition hover:bg-rose-50"
+            className="flex min-h-36 cursor-pointer flex-col items-center justify-center gap-1.5 px-3 py-4 text-center transition hover:bg-rose-50 sm:min-h-40 sm:gap-2 sm:px-4 sm:py-6"
           >
-            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-rose-500 shadow-sm ring-1 ring-rose-100">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-rose-500 shadow-sm ring-1 ring-rose-100 sm:h-12 sm:w-12 sm:rounded-2xl">
               {isUploading ? (
                 <Loader2 className="animate-spin" size={22} />
               ) : (
@@ -130,9 +132,13 @@ export function ImageUploadField({
               )}
             </span>
             <span className="text-sm font-black text-slate-800">
-              {isUploading ? "Subiendo imagen..." : "Subir imagen"}
+              {isUploading
+                ? "Subiendo..."
+                : isMainPhoto
+                  ? "Subir foto principal"
+                  : "Subir imagen"}
             </span>
-            <span className="max-w-xs text-xs font-semibold leading-5 text-slate-400">
+            <span className="max-w-xs text-[11px] font-semibold leading-4 text-slate-400 sm:text-xs sm:leading-5">
               {helperText ?? "JPG, PNG o WebP. Se optimiza automáticamente para que pese menos y cargue rápido."}
             </span>
           </label>
@@ -142,7 +148,7 @@ export function ImageUploadField({
       {value && (
         <label
           htmlFor={inputId}
-          className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50"
+          className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:px-4"
         >
           {isUploading ? <Loader2 className="animate-spin" size={14} /> : <UploadCloud size={14} />}
           Cambiar imagen
@@ -211,16 +217,16 @@ export function GalleryUploadField({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-1.5 sm:space-y-2">
       <span className={labelClass}>{label}</span>
 
-      <div className="rounded-2xl border border-rose-100 bg-[#fffaf5] p-3">
+      <div className="min-w-0 rounded-xl border border-rose-100 bg-[#fffaf5] p-2 sm:rounded-2xl sm:p-3">
         {cleanValues.length > 0 && (
           <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {cleanValues.map((url, index) => (
               <div
                 key={url}
-                className="overflow-hidden rounded-2xl bg-white ring-1 ring-rose-100"
+                className="min-w-0 overflow-hidden rounded-xl bg-white ring-1 ring-rose-100 sm:rounded-2xl"
               >
                 {previewFit === "contain" ? (
                   <ProductImageFrame
@@ -234,7 +240,7 @@ export function GalleryUploadField({
                     style={{ backgroundImage: `url(${url})` }}
                   />
                 )}
-                <div className="space-y-2 p-3">
+                <div className="space-y-2 p-2.5 sm:p-3">
                   <div className="flex min-h-7 items-center justify-between gap-2">
                     {index === 0 ? (
                       <span className="rounded-full bg-rose-50 px-3 py-1.5 text-[10px] font-black uppercase text-rose-600">
@@ -285,9 +291,9 @@ export function GalleryUploadField({
 
         <label
           htmlFor={inputId}
-          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-rose-200 bg-white px-4 py-5 text-center transition hover:bg-rose-50"
+          className="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-rose-200 bg-white px-3 py-4 text-center transition hover:bg-rose-50 sm:gap-2 sm:rounded-2xl sm:px-4 sm:py-5"
         >
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 ring-1 ring-rose-100">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-500 ring-1 ring-rose-100 sm:h-11 sm:w-11 sm:rounded-2xl">
             {isUploading ? (
               <Loader2 className="animate-spin" size={20} />
             ) : (
@@ -297,7 +303,7 @@ export function GalleryUploadField({
           <span className="text-sm font-black text-slate-800">
             {isUploading ? "Subiendo..." : "Subir una o varias imágenes"}
           </span>
-          <span className="max-w-md text-xs font-semibold leading-5 text-slate-400">
+          <span className="max-w-md text-[11px] font-semibold leading-4 text-slate-400 sm:text-xs sm:leading-5">
             {helperText ?? "Puedes seleccionar varias fotos. Se reducen automáticamente antes de subir."}
           </span>
         </label>

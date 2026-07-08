@@ -163,8 +163,9 @@ export default function AdminProductsClient() {
       }),
     [productCategoryFilter, productFilter, products, subcategoryFilter]
   );
-  const createButtonLabel =
-    productCategoryFilter === "Todas"
+  const createButtonLabel = isFormOpen
+    ? "Cerrar"
+    : productCategoryFilter === "Todas"
       ? "Agregar producto"
       : `Agregar producto de ${productCategoryFilter}`;
 
@@ -215,6 +216,15 @@ export default function AdminProductsClient() {
     );
     setSelectedProduct(null);
     setIsFormOpen((value) => wasEditing || !value);
+  }
+
+  function handlePrimaryAction() {
+    if (isFormOpen) {
+      closeForm();
+      return;
+    }
+
+    openCreateForm();
   }
 
   function handleEditProduct(product: AdminProduct) {
@@ -337,10 +347,10 @@ export default function AdminProductsClient() {
   ) {
     const isMobile = layout === "mobile";
     const actionWrapperClass = isMobile
-      ? "grid grid-cols-2 gap-2"
+      ? "grid grid-cols-2 gap-1.5"
       : "flex flex-wrap justify-end gap-2";
     const actionButtonClass = isMobile
-      ? "min-h-11 w-full px-3 py-2.5 text-xs"
+      ? "min-h-10 w-full px-3 py-2 text-xs"
       : "px-4 py-2 text-xs";
 
     if (isMobile) {
@@ -348,12 +358,12 @@ export default function AdminProductsClient() {
 
       return (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={() => handleEditProduct(product)}
               disabled={busyProductId === product.id}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-sky-50 px-3 py-2.5 text-xs font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:text-sky-300"
+              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-sky-50 px-3 py-2 text-xs font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:text-sky-300"
             >
               <Pencil size={15} />
               Editar
@@ -366,15 +376,15 @@ export default function AdminProductsClient() {
                   currentId === product.id ? "" : product.id
                 )
               }
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-slate-100 px-3 py-2.5 text-xs font-black text-slate-700 transition hover:bg-slate-200"
+              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-200"
             >
               <MoreVertical size={15} />
-              Más acciones
+              Más
             </button>
           </div>
 
           {isOpen && (
-            <div className="grid gap-2 rounded-2xl bg-[#fffaf5] p-2 ring-1 ring-rose-100">
+            <div className="grid gap-1.5 rounded-xl bg-[#fffaf5] p-2 ring-1 ring-rose-100">
               <button
                 type="button"
                 onClick={() => void handleToggleActive(product)}
@@ -464,7 +474,7 @@ export default function AdminProductsClient() {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-500">
             Inventario
           </p>
-          <h1 className="mt-1 text-2xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
+          <h1 className="mt-1 text-xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
             Productos
           </h1>
           <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-600 sm:mt-2">
@@ -476,7 +486,9 @@ export default function AdminProductsClient() {
           <button
             type="button"
             onClick={() => void loadProducts()}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:w-auto"
+            className={`min-h-10 w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:min-h-12 sm:w-auto sm:px-5 sm:py-3 sm:text-sm ${
+              isFormOpen ? "hidden sm:inline-flex" : "inline-flex"
+            }`}
           >
             <RefreshCw size={17} />
             Actualizar
@@ -484,11 +496,11 @@ export default function AdminProductsClient() {
 
           <button
             type="button"
-            onClick={openCreateForm}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-rose-500 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-rose-600 sm:w-auto"
+            onClick={handlePrimaryAction}
+            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-rose-600 sm:min-h-12 sm:w-auto sm:px-5 sm:py-3 sm:text-sm"
           >
-            {isFormOpen && !selectedProduct ? <X size={17} /> : <Plus size={17} />}
-            {isFormOpen && !selectedProduct ? "Cerrar" : createButtonLabel}
+            {isFormOpen ? <X size={16} /> : <Plus size={16} />}
+            {createButtonLabel}
           </button>
         </div>
       </div>
@@ -580,11 +592,11 @@ export default function AdminProductsClient() {
       )}
 
       {!isLoading && products.length === 0 && !error && (
-        <div className="rounded-[1.75rem] border-2 border-dashed border-rose-200 bg-rose-50/60 p-8 text-center">
-          <h2 className="text-2xl font-black text-slate-950">
+        <div className="rounded-[1.25rem] border-2 border-dashed border-rose-200 bg-rose-50/60 p-5 text-center sm:rounded-[1.75rem] sm:p-8">
+          <h2 className="text-lg font-black text-slate-950 sm:text-2xl">
             Todavía no hay productos
           </h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm font-bold leading-6 text-slate-600">
+          <p className="mx-auto mt-2 max-w-xl text-xs font-bold leading-5 text-slate-600 sm:text-sm sm:leading-6">
             Ya se quitaron los productos de ejemplo. Empieza agregando tus
             propios productos desde el botón “Agregar producto”.
           </p>
@@ -594,7 +606,7 @@ export default function AdminProductsClient() {
               setSelectedProduct(null);
               setIsFormOpen(true);
             }}
-            className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-rose-500 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-rose-600 sm:w-auto"
+            className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-rose-500 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-rose-600 sm:mt-5 sm:min-h-12 sm:w-auto sm:px-5 sm:py-3 sm:text-sm"
           >
             <Plus size={17} />
             Agregar primer producto
@@ -603,8 +615,8 @@ export default function AdminProductsClient() {
       )}
 
       {products.length > 0 && visibleProducts.length === 0 && (
-        <div className="rounded-[1.75rem] border-2 border-dashed border-rose-200 bg-rose-50/60 p-8 text-center">
-          <h2 className="text-2xl font-black text-slate-950">
+        <div className="rounded-[1.25rem] border-2 border-dashed border-rose-200 bg-rose-50/60 p-5 text-center sm:rounded-[1.75rem] sm:p-8">
+          <h2 className="text-lg font-black text-slate-950 sm:text-2xl">
             No hay productos en este filtro
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm font-bold leading-6 text-slate-600">
@@ -689,13 +701,13 @@ export default function AdminProductsClient() {
       )}
 
       {visibleProducts.length > 0 && (
-        <div className="grid gap-3 lg:hidden">
+        <div className="grid gap-2.5 lg:hidden">
           {visibleProducts.map((product) => (
             <article
               key={`card-${product.id}`}
-              className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100"
+              className="min-w-0 rounded-[1.1rem] bg-white p-3 shadow-sm ring-1 ring-rose-100"
             >
-              <div className="flex items-start gap-3">
+              <div className="flex min-w-0 items-start gap-3">
                 <ProductImage product={product} />
 
               <div className="min-w-0 flex-1">
@@ -706,14 +718,6 @@ export default function AdminProductsClient() {
                   <p className="mt-1 line-clamp-1 text-xs font-bold text-slate-600">
                     {product.category} · {product.subcategory}
                   </p>
-                  {product.wholesaleMode !== "none" && (
-                    <p className="mt-1 text-[11px] font-black uppercase text-amber-700">
-                      Mayoreo{" "}
-                      {product.wholesaleMode === "surtido"
-                        ? "surtido"
-                        : "por producto"}
-                    </p>
-                  )}
                 </div>
                 <span
                   className={`mt-2 inline-flex shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black ${getStatusClass(
@@ -725,19 +729,16 @@ export default function AdminProductsClient() {
               </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div className="rounded-2xl bg-[#fffaf5] px-3 py-2 ring-1 ring-rose-100">
+              <div className="mt-2.5 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-xl bg-[#fffaf5] px-3 py-2 ring-1 ring-rose-100">
                   <p className="text-[11px] font-black uppercase text-slate-600">
                     Precio final
                   </p>
                   <p className="mt-0.5 text-sm font-black text-slate-950">
                     {formatPrice(product.price)}
                   </p>
-                  <p className="mt-0.5 text-[11px] font-bold text-slate-500">
-                    Precio base: {formatPrice(getInternalBasePrice(product))}
-                  </p>
                 </div>
-                <div className="rounded-2xl bg-[#fffaf5] px-3 py-2 ring-1 ring-rose-100">
+                <div className="rounded-xl bg-[#fffaf5] px-3 py-2 ring-1 ring-rose-100">
                   <p className="text-[11px] font-black uppercase text-slate-600">
                     Piezas
                   </p>

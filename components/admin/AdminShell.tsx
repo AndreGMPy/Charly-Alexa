@@ -194,7 +194,7 @@ export default function AdminShell({ children }: AdminShellProps) {
             key={item.href}
             href={item.href}
             onClick={() => setIsMobileOpen(false)}
-            className={`flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black transition ${
+            className={`flex min-h-10 items-center gap-2 rounded-xl px-3 py-2 text-xs font-black transition sm:min-h-12 sm:gap-3 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm ${
               isActive
                 ? "bg-slate-950 text-white shadow-sm"
                 : "text-slate-700 hover:bg-rose-50 hover:text-slate-950"
@@ -209,7 +209,7 @@ export default function AdminShell({ children }: AdminShellProps) {
   );
 
   return (
-    <div className="min-h-screen bg-[#fffaf5] text-slate-900 lg:grid lg:grid-cols-[280px_1fr]">
+    <div className="min-h-dvh bg-[#fffaf5] text-slate-900 lg:grid lg:grid-cols-[280px_1fr]">
       <aside className="sticky top-0 hidden h-screen border-r border-rose-100 bg-white/90 px-5 py-6 shadow-sm backdrop-blur lg:block">
         <Link href="/admin" className="flex items-center gap-3">
           <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-sm font-black text-rose-500 ring-1 ring-rose-100">
@@ -247,13 +247,13 @@ export default function AdminShell({ children }: AdminShellProps) {
       </aside>
 
       <div className="lg:hidden">
-        <header className="sticky top-0 z-40 border-b border-rose-100 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
+        <header className="sticky top-0 z-40 border-b border-rose-100 bg-white/95 px-3 py-2.5 shadow-sm backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <Link href="/admin" className="flex items-center gap-2">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-50 text-xs font-black text-rose-500 ring-1 ring-rose-100">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50 text-xs font-black text-rose-500 ring-1 ring-rose-100">
                 CA
               </span>
-              <span className="text-base font-black text-slate-950">
+              <span className="text-sm font-black text-slate-950">
                 Panel vendedor
               </span>
             </Link>
@@ -261,7 +261,7 @@ export default function AdminShell({ children }: AdminShellProps) {
             <button
               type="button"
               onClick={() => setIsMobileOpen((value) => !value)}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white"
               aria-label={isMobileOpen ? "Cerrar menú" : "Abrir menú"}
             >
               {isMobileOpen ? <X size={19} /> : <Menu size={19} />}
@@ -269,12 +269,12 @@ export default function AdminShell({ children }: AdminShellProps) {
           </div>
 
           {isMobileOpen && (
-            <div className="mt-4 max-h-[calc(100dvh-5.5rem)] overflow-y-auto rounded-[1.5rem] bg-[#fffaf5] p-3 ring-1 ring-rose-100">
+            <div className="mt-3 max-h-[calc(100dvh-4.75rem)] overflow-y-auto rounded-[1.25rem] bg-[#fffaf5] p-2 ring-1 ring-rose-100">
               {navigation}
               <button
                 type="button"
                 onClick={handleLogout}
-                className="mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-100 px-4 py-3 text-sm font-black text-slate-700"
+                className="mt-2 flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
               >
                 <LogOut size={17} />
                 Cerrar sesión
@@ -284,7 +284,7 @@ export default function AdminShell({ children }: AdminShellProps) {
         </header>
       </div>
 
-      <main className="min-w-0 overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+      <main className="admin-panel min-w-0 overflow-x-hidden px-3 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
         {children}
       </main>
     </div>

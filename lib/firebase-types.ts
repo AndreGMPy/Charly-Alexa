@@ -59,7 +59,11 @@ export type OrderPayment = {
   status: PaymentStatus;
   provider: PaymentProvider;
   preferenceId?: string;
+  initPoint?: string;
   paymentId?: string;
+  paidAt?: FirebaseDate;
+  amountPaid?: number;
+  updatedAt?: FirebaseDate;
 };
 
 export type ProductSizeStock = {

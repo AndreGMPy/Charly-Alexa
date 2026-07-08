@@ -20,14 +20,26 @@ const PAYMENT_NOT_CONFIGURED_MESSAGE =
 type OrderPaymentData = {
   status: string;
   provider: PaymentProvider;
+  preferenceId: string;
+  initPoint: string;
 };
 
 type PreferenceItem = {
   id?: string;
   title: string;
+  description?: string;
   quantity: number;
   unit_price: number;
   currency_id: "MXN";
+};
+
+type PaymentProduct = {
+  productId: string;
+  title: string;
+  size: string;
+  quantity: number;
+  price: number;
+  subtotal: number;
 };
 
 function json(message: string, status: number) {
@@ -51,6 +63,14 @@ function readNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function getMercadoPagoConfig() {
   const accessToken = process.env.MERCADO_PAGO_ACCESS_TOKEN?.trim();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "");
@@ -65,8 +85,10 @@ function getOrderPayment(data: Record<string, unknown>): OrderPaymentData {
   const provider =
     payment.provider === "mercadopago" ? "mercadopago" : "manual";
   const status = readString(payment.status, 40) || "manual";
+  const preferenceId = readString(payment.preferenceId, 120);
+  const initPoint = readString(payment.initPoint, 500);
 
-  return { provider, status };
+  return { provider, status, preferenceId, initPoint };
 }
 
 function getOrderDeliveryMethod(data: Record<string, unknown>) {
@@ -112,7 +134,7 @@ async function recalculateOrderForPayment(
       firestore.collection(PRODUCTS_COLLECTION).doc(item.productId).get()
     )
   );
-  const preferenceItems: PreferenceItem[] = [];
+  const paymentProducts: PaymentProduct[] = [];
   let subtotal = 0;
   let totalItems = 0;
   let hasWholesale = false;
@@ -139,12 +161,13 @@ async function recalculateOrderForPayment(
       (readString(product.wholesaleMode, 40) !== "" &&
         readString(product.wholesaleMode, 40) !== "none");
 
-    preferenceItems.push({
-      id: item.productId,
-      title: `${title} - Talla ${item.size}`,
+    paymentProducts.push({
+      productId: item.productId,
+      title,
+      size: item.size,
       quantity: item.quantity,
-      unit_price: price,
-      currency_id: "MXN",
+      price,
+      subtotal: price * item.quantity,
     });
   });
 
@@ -154,9 +177,29 @@ async function recalculateOrderForPayment(
     hasWholesale,
   });
 
-  if (shipping.cost > 0) {
+  const shippingDescription = shipping.requiresQuote
+    ? "Envio a cotizar con la tienda"
+    : shipping.cost > 0
+      ? "Envio nacional incluido en el pedido"
+      : "Sin cargo de envio automatico";
+  const preferenceItems: PreferenceItem[] = paymentProducts.map((item) => ({
+    id: item.productId,
+    title: `${item.title} - Talla ${item.size}`,
+    description: `Cantidad: ${item.quantity} · Subtotal: ${formatCurrency(
+      item.subtotal
+    )} · ${shippingDescription}`,
+    quantity: item.quantity,
+    unit_price: item.price,
+    currency_id: "MXN",
+  }));
+
+  if (!shipping.requiresQuote && shipping.cost > 0) {
     preferenceItems.push({
-      title: "Envío",
+      title:
+        deliveryMethod === NATIONAL_DELIVERY_METHOD
+          ? "Envio nacional"
+          : "Envio",
+      description: "Costo de envio del pedido",
       quantity: 1,
       unit_price: shipping.cost,
       currency_id: "MXN",
@@ -213,7 +256,15 @@ export async function POST(request: Request) {
       return json("Este pedido se acordará por WhatsApp.", 400);
     }
 
+    if (payment.preferenceId && payment.initPoint) {
+      return Response.json({
+        preferenceId: payment.preferenceId,
+        initPoint: payment.initPoint,
+      });
+    }
+
     const deliveryMethod = getOrderDeliveryMethod(order);
+    const encodedOrderId = encodeURIComponent(orderId);
 
     const recalculatedOrder = await recalculateOrderForPayment(
       orderId,
@@ -235,9 +286,9 @@ export async function POST(request: Request) {
         },
         notification_url: `${config.siteUrl}/api/payments/mercadopago/webhook`,
         back_urls: {
-          success: `${config.siteUrl}/?payment=success&order=${orderId}`,
-          failure: `${config.siteUrl}/?payment=failure&order=${orderId}`,
-          pending: `${config.siteUrl}/?payment=pending&order=${orderId}`,
+          success: `${config.siteUrl}/pago/exitoso?orderId=${encodedOrderId}`,
+          failure: `${config.siteUrl}/pago/error?orderId=${encodedOrderId}`,
+          pending: `${config.siteUrl}/pago/pendiente?orderId=${encodedOrderId}`,
         },
         auto_return: "approved",
       }),
@@ -265,6 +316,7 @@ export async function POST(request: Request) {
       "payment.status": "pending",
       "payment.provider": "mercadopago",
       "payment.preferenceId": preferenceId,
+      "payment.initPoint": initPoint,
       updatedAt: FieldValue.serverTimestamp(),
     });
 

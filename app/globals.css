@@ -20,6 +20,7 @@ html {
 
 body {
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: hidden;
   background: var(--background);
   color: var(--foreground);
@@ -66,4 +67,27 @@ select {
 ::selection {
   background: #fecdd3;
   color: #0f172a;
+}
+
+.admin-panel,
+.admin-panel * {
+  max-width: 100%;
+}
+
+.admin-panel input::placeholder,
+.admin-panel textarea::placeholder {
+  color: #cbd5e1;
+  opacity: 0.72;
+}
+
+.admin-panel input,
+.admin-panel textarea,
+.admin-panel select {
+  min-width: 0;
+}
+
+@media (max-width: 639px) {
+  .admin-panel {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
 }

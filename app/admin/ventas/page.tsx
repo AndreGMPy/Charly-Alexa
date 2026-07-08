@@ -479,7 +479,7 @@ export default function AdminSalesPage() {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-700">
             Ventas de tienda
           </p>
-          <h1 className="mt-1 text-2xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
+          <h1 className="mt-1 text-xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
             Ventas de tienda
           </h1>
           <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-500 sm:mt-2">
@@ -490,7 +490,7 @@ export default function AdminSalesPage() {
         <button
           type="button"
           onClick={() => void loadSalesData()}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:px-5 sm:py-3"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:min-h-11 sm:px-5 sm:py-3 sm:text-sm"
         >
           <RefreshCw size={17} />
           Actualizar
@@ -503,8 +503,8 @@ export default function AdminSalesPage() {
         </div>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-        <section className="rounded-[1.25rem] bg-white p-4 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
+      <div className="grid min-w-0 gap-3 sm:gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className="min-w-0 rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-lime-50 text-lime-700 ring-1 ring-lime-100 sm:h-12 sm:w-12">
               <WalletCards size={20} />
@@ -519,17 +519,17 @@ export default function AdminSalesPage() {
             </div>
           </div>
 
-          <div className="mt-4 space-y-3 sm:mt-5 sm:space-y-4">
+          <div className="mt-3 space-y-3 sm:mt-5 sm:space-y-4">
             <label className="block">
               <span className="text-xs font-black uppercase text-slate-500">
                 Buscar producto
               </span>
-              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-slate-200 bg-[#fffaf5] px-3 py-2.5 sm:px-4 sm:py-3">
+              <div className="mt-1.5 flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 sm:mt-2 sm:rounded-2xl sm:px-4 sm:py-3">
                 <Search size={17} className="text-slate-400" />
                 <input
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  className="w-full bg-transparent text-sm font-bold outline-none"
+                  className="w-full min-w-0 bg-transparent text-[16px] font-bold outline-none sm:text-sm"
                   placeholder="Nombre, talla, color o categoría"
                 />
               </div>
@@ -549,7 +549,7 @@ export default function AdminSalesPage() {
                       key={product.id}
                       type="button"
                       onClick={() => selectProduct(product)}
-                      className={`flex w-full items-center gap-3 rounded-2xl p-3 text-left transition ${
+                      className={`flex min-w-0 w-full items-center gap-3 rounded-xl p-2.5 text-left transition sm:rounded-2xl sm:p-3 ${
                         isSelected
                           ? "bg-lime-50 ring-2 ring-lime-300"
                           : "bg-[#fffaf5] ring-1 ring-rose-100 hover:bg-rose-50"
@@ -579,7 +579,7 @@ export default function AdminSalesPage() {
                 <select
                   value={selectedSize}
                   onChange={(event) => setSelectedSize(event.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-3 py-2.5 text-sm font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:px-4 sm:py-3"
+                  className="mt-1.5 w-full min-w-0 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:mt-2 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
                   disabled={!selectedProduct}
                 >
                   <option value="">Talla</option>
@@ -603,7 +603,7 @@ export default function AdminSalesPage() {
                   onChange={(event) =>
                     setQuantity(Math.max(Number(event.target.value) || 1, 1))
                   }
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-3 py-2.5 text-sm font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:px-4 sm:py-3"
+                  className="mt-1.5 w-full min-w-0 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:mt-2 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
                 />
               </label>
 
@@ -618,7 +618,7 @@ export default function AdminSalesPage() {
                   onChange={(event) =>
                     setPrice(Math.max(Number(event.target.value) || 0, 0))
                   }
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-3 py-2.5 text-sm font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:px-4 sm:py-3"
+                  className="mt-1.5 w-full min-w-0 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:mt-2 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
                 />
               </label>
             </div>
@@ -635,7 +635,7 @@ export default function AdminSalesPage() {
             <button
               type="button"
               onClick={handleAddLine}
-              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
+              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-800 sm:min-h-12 sm:px-5 sm:py-3 sm:text-sm"
             >
               <Plus size={18} />
               Agregar a la venta
@@ -643,7 +643,7 @@ export default function AdminSalesPage() {
           </div>
         </section>
 
-        <section className="rounded-[1.25rem] bg-white p-4 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
+        <section className="min-w-0 rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.16em] text-lime-700">
@@ -712,7 +712,7 @@ export default function AdminSalesPage() {
                 onChange={(event) =>
                   setPaymentMethod(event.target.value as PaymentMethod)
                 }
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-3 py-2.5 text-sm font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:px-4 sm:py-3"
+                className="mt-1.5 w-full min-w-0 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:mt-2 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
               >
                 {paymentMethods.map((method) => (
                   <option key={method} value={method}>
@@ -739,7 +739,7 @@ export default function AdminSalesPage() {
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              className="mt-2 min-h-16 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-3 py-2.5 text-sm font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:px-4 sm:py-3"
+              className="mt-1.5 min-h-14 w-full min-w-0 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:mt-2 sm:min-h-16 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
               placeholder="Ej. Venta en mostrador."
             />
           </label>
@@ -748,7 +748,7 @@ export default function AdminSalesPage() {
             type="button"
             onClick={() => void handleSaveSale()}
             disabled={isSaving || saleLines.length === 0}
-            className="mt-4 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-lime-600 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-lime-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-lime-600 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-lime-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:min-h-12 sm:px-5 sm:py-3 sm:text-sm"
           >
             <PackageCheck size={18} />
             {isSaving ? "Registrando venta..." : "Registrar venta"}
@@ -756,7 +756,7 @@ export default function AdminSalesPage() {
         </section>
       </div>
 
-      <section className="rounded-[1.25rem] bg-white p-4 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
+      <section className="min-w-0 rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.16em] text-lime-700">

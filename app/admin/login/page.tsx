@@ -88,8 +88,8 @@ export default function AdminLoginPage() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-2xl border border-rose-100 bg-[#fffaf5] px-4 py-3 text-sm font-bold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-4 focus:ring-rose-100"
-              placeholder="vendedor@charlyalexa.com"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fffaf5] px-4 py-3 text-[16px] font-bold text-slate-800 outline-none transition placeholder:text-slate-300 placeholder:opacity-70 focus:border-rose-300 focus:ring-4 focus:ring-rose-100 sm:text-sm"
+              placeholder="Ej. vendedor@charlyalexa.com"
               autoComplete="email"
               required
             />
@@ -104,7 +104,7 @@ export default function AdminLoginPage() {
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-2xl border border-rose-100 bg-[#fffaf5] px-4 py-3 text-sm font-bold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-4 focus:ring-rose-100"
+              className="w-full rounded-2xl border border-rose-100 bg-[#fffaf5] px-4 py-3 text-[16px] font-bold text-slate-800 outline-none transition placeholder:text-slate-300 placeholder:opacity-70 focus:border-rose-300 focus:ring-4 focus:ring-rose-100 sm:text-sm"
               placeholder="••••••••"
               autoComplete="current-password"
               required

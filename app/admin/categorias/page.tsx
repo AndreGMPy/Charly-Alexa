@@ -58,9 +58,10 @@ const initialSubcategoryForm: SubcategoryFormValues = {
 };
 
 const fieldClass =
-  "w-full rounded-2xl border border-rose-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-4 focus:ring-rose-100";
+  "w-full min-w-0 rounded-xl border border-rose-100 bg-white px-3 py-2 text-[16px] font-bold text-slate-800 outline-none transition placeholder:text-slate-300 placeholder:opacity-70 focus:border-rose-300 focus:ring-4 focus:ring-rose-100 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm";
 
-const labelClass = "text-xs font-black uppercase tracking-wide text-slate-600";
+const labelClass =
+  "text-[10px] font-black uppercase tracking-wide text-slate-600 sm:text-xs";
 
 function createSlug(value: string) {
   return value
@@ -486,7 +487,7 @@ export default function AdminCategoriesPage() {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-rose-500">
             Catálogo
           </p>
-          <h1 className="mt-1 text-2xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
+          <h1 className="mt-1 text-xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
             Categorías
           </h1>
           <p className="mt-1 text-sm font-medium leading-6 text-slate-600 sm:hidden">
@@ -501,7 +502,7 @@ export default function AdminCategoriesPage() {
           <button
             type="button"
             onClick={() => void loadCategories()}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:w-auto"
+            className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:min-h-12 sm:w-auto sm:px-5 sm:py-3 sm:text-sm"
           >
             <RefreshCw size={17} />
             Actualizar
@@ -512,7 +513,7 @@ export default function AdminCategoriesPage() {
               type="button"
               onClick={() => void handleEnsureBaseCategories()}
               disabled={isSaving}
-              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:bg-slate-300 sm:w-auto"
+              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-800 disabled:bg-slate-300 sm:min-h-12 sm:w-auto sm:px-5 sm:py-3 sm:text-sm"
             >
               <Save size={17} />
               Guardar categorías base
@@ -524,7 +525,7 @@ export default function AdminCategoriesPage() {
               type="button"
               onClick={() => void handleCleanupDuplicates()}
               disabled={isSaving}
-              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-amber-50 px-5 py-3 text-sm font-black text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-100 disabled:text-amber-300 sm:w-auto"
+              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-amber-50 px-4 py-2 text-xs font-black text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-100 disabled:text-amber-300 sm:min-h-12 sm:w-auto sm:px-5 sm:py-3 sm:text-sm"
             >
               <Trash2 size={16} />
               Limpiar duplicados
@@ -652,7 +653,7 @@ export default function AdminCategoriesPage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_150px]">
-          <div className="lg:col-span-2">
+          <div className="hidden lg:col-span-2 sm:block">
             <ImageUploadField
               label="Imagen opcional"
               value={form.imageUrl}
@@ -669,7 +670,7 @@ export default function AdminCategoriesPage() {
               value={form.name}
               onChange={(event) => updateForm("name", event.target.value)}
               className={fieldClass}
-              placeholder="Vestidos"
+              placeholder="Ej. Vestidos"
             />
           </label>
 

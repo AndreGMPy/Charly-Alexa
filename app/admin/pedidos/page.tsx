@@ -123,7 +123,7 @@ function getPaymentStatusLabel(order: FirebaseOrder) {
   if (status === "paid") return "Pagado";
   if (status === "pending") return "Pendiente";
   if (status === "failed") return "Fallido";
-  if (status === "manual") return "Manual";
+  if (status === "manual") return "Manual / WhatsApp";
   return "No registrado";
 }
 
@@ -133,6 +133,35 @@ function getPaymentProviderLabel(order: FirebaseOrder) {
   if (provider === "mercadopago") return "Mercado Pago";
   if (provider === "manual") return "Manual / WhatsApp";
   return "No registrado";
+}
+
+function getPaymentBadgeLabel(order: FirebaseOrder) {
+  if (order.payment?.status === "paid") return "Pago confirmado";
+  return getPaymentStatusLabel(order);
+}
+
+function getPaymentBadgeClass(order: FirebaseOrder) {
+  const status = order.payment?.status;
+
+  if (status === "paid") {
+    return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  }
+
+  if (status === "failed") {
+    return "bg-rose-50 text-rose-700 ring-rose-100";
+  }
+
+  if (status === "manual") {
+    return "bg-sky-50 text-sky-700 ring-sky-100";
+  }
+
+  return "bg-amber-50 text-amber-700 ring-amber-100";
+}
+
+function getPaymentAmountPaid(order: FirebaseOrder) {
+  return typeof order.payment?.amountPaid === "number"
+    ? order.payment.amountPaid
+    : null;
 }
 
 function getDeliveryMethodLabel(order: FirebaseOrder) {
@@ -423,7 +452,7 @@ export default function AdminOrdersPage() {
           <p className="text-xs font-black uppercase tracking-[0.18em] text-sky-600">
             Pedidos web
           </p>
-          <h1 className="mt-1 text-2xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
+          <h1 className="mt-1 text-xl font-black text-slate-950 sm:mt-2 sm:text-4xl">
             Pedidos web
           </h1>
           <p className="mt-1 text-sm font-medium leading-6 text-slate-500 sm:hidden">
@@ -438,7 +467,7 @@ export default function AdminOrdersPage() {
         <button
           type="button"
           onClick={() => void loadOrders()}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:px-5 sm:py-3"
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 sm:min-h-11 sm:px-5 sm:py-3 sm:text-sm"
         >
           <RefreshCw size={17} />
           Actualizar
@@ -465,12 +494,12 @@ export default function AdminOrdersPage() {
           </div>
         </div>
 
-        <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-[#fffaf5] px-3 py-2.5 sm:px-4 sm:py-3">
+        <label className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 sm:rounded-2xl sm:px-4 sm:py-3">
           <Search size={17} className="text-slate-400" />
           <input
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            className="w-full bg-transparent text-sm font-bold outline-none"
+            className="w-full min-w-0 bg-transparent text-[16px] font-bold outline-none sm:text-sm"
             placeholder="Buscar por nombre, teléfono o folio"
           />
         </label>
@@ -597,7 +626,7 @@ export default function AdminOrdersPage() {
           return (
             <article
               key={order.id}
-              className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-5"
+              className="min-w-0 rounded-[1.1rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-5"
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
@@ -640,7 +669,7 @@ export default function AdminOrdersPage() {
                       )
                     }
                     disabled={busyOrderId === order.id}
-                    className="min-h-11 rounded-full border border-slate-200 bg-[#fffaf5] px-3 py-2.5 text-sm font-black text-slate-700 outline-none transition focus:border-sky-300 sm:px-4 sm:py-3"
+                    className="min-h-10 w-full min-w-0 rounded-full border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-black text-slate-700 outline-none transition focus:border-sky-300 sm:min-h-11 sm:px-4 sm:py-3 sm:text-sm"
                   >
                     {orderStatuses.map((option) => (
                       <option key={option} value={option}>
@@ -652,7 +681,7 @@ export default function AdminOrdersPage() {
                   <button
                     type="button"
                     onClick={() => handleWhatsApp(order)}
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-emerald-500 px-3 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-emerald-600 sm:px-4 sm:py-3"
+                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-emerald-500 px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-emerald-600 sm:min-h-11 sm:px-4 sm:py-3 sm:text-sm"
                   >
                     <MessageCircle size={17} />
                     <span className="sm:hidden">WhatsApp</span>
@@ -661,8 +690,8 @@ export default function AdminOrdersPage() {
                 </div>
               </div>
 
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:mt-5 sm:gap-3 md:grid-cols-5">
-                <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-5 sm:grid-cols-2 sm:gap-3 md:grid-cols-5">
+                <div className="hidden rounded-2xl bg-[#fffaf5] p-2.5 sm:block sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
                     Subtotal
                   </p>
@@ -670,7 +699,7 @@ export default function AdminOrdersPage() {
                     {formatPrice(order.subtotal)}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
+                <div className="hidden rounded-2xl bg-[#fffaf5] p-2.5 sm:block sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
                     Envío
                   </p>
@@ -678,7 +707,7 @@ export default function AdminOrdersPage() {
                     {formatOrderShipping(order)}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
+                <div className="rounded-xl bg-[#fffaf5] p-2 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
                     Total
                   </p>
@@ -686,19 +715,28 @@ export default function AdminOrdersPage() {
                     {formatPrice(order.total)}
                   </p>
                 </div>
-                <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
+                <div className="rounded-xl bg-[#fffaf5] p-2 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
                     Pago
                   </p>
-                  <p className="mt-1 text-sm font-black text-slate-950 sm:text-xl">
-                    {getPaymentStatusLabel(order)}
-                  </p>
+                  <span
+                    className={`mt-1 inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ring-1 sm:text-xs ${getPaymentBadgeClass(
+                      order
+                    )}`}
+                  >
+                    {getPaymentBadgeLabel(order)}
+                  </span>
+                  {order.payment?.paymentId && (
+                    <p className="mt-1 break-all text-[10px] font-bold text-slate-500 sm:text-xs">
+                      ID {order.payment.paymentId}
+                    </p>
+                  )}
                 </div>
-                <div className="rounded-2xl bg-[#fffaf5] p-2.5 sm:p-4">
+                <div className="rounded-xl bg-[#fffaf5] p-2 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
                     Piezas
                   </p>
-                  <p className="mt-1 text-lg font-black text-slate-950 sm:text-2xl">
+                  <p className="mt-1 text-base font-black text-slate-950 sm:text-2xl">
                     {order.totalItems ?? order.items.length}
                   </p>
                 </div>
@@ -751,9 +789,13 @@ export default function AdminOrdersPage() {
                       <p className="text-xs font-black uppercase text-slate-400">
                         Estado de pago
                       </p>
-                      <p className="mt-1 text-sm font-black text-slate-950">
-                        {getPaymentStatusLabel(order)}
-                      </p>
+                      <span
+                        className={`mt-2 inline-flex rounded-full px-3 py-1.5 text-xs font-black ring-1 ${getPaymentBadgeClass(
+                          order
+                        )}`}
+                      >
+                        {getPaymentBadgeLabel(order)}
+                      </span>
                     </div>
                     <div className="rounded-2xl bg-white p-3">
                       <p className="text-xs font-black uppercase text-slate-400">
@@ -763,6 +805,36 @@ export default function AdminOrdersPage() {
                         {getPaymentProviderLabel(order)}
                       </p>
                     </div>
+                    {order.payment?.paymentId && (
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase text-slate-400">
+                          ID Mercado Pago
+                        </p>
+                        <p className="mt-1 break-all text-sm font-black text-slate-950">
+                          {order.payment.paymentId}
+                        </p>
+                      </div>
+                    )}
+                    {order.payment?.paidAt && (
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase text-slate-400">
+                          Fecha de pago
+                        </p>
+                        <p className="mt-1 text-sm font-black text-slate-950">
+                          {formatDate(order.payment.paidAt)}
+                        </p>
+                      </div>
+                    )}
+                    {getPaymentAmountPaid(order) !== null && (
+                      <div className="rounded-2xl bg-white p-3">
+                        <p className="text-xs font-black uppercase text-slate-400">
+                          Monto pagado
+                        </p>
+                        <p className="mt-1 text-sm font-black text-slate-950">
+                          {formatPrice(getPaymentAmountPaid(order) ?? 0)}
+                        </p>
+                      </div>
+                    )}
                     <div className="rounded-2xl bg-white p-3">
                       <p className="text-xs font-black uppercase text-slate-400">
                         Envío
