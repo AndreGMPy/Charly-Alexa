@@ -1,6 +1,7 @@
 "use client";
 
 import ProductImageFrame from "@/components/ProductImageFrame";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { getProducts } from "@/lib/firebase-services/products";
 import {
   createStoreSale,
@@ -18,6 +19,12 @@ import type {
 import { formatPrice } from "@/lib/products";
 import { getSafeSaleMessage, logErrorInDevelopment } from "@/lib/safe-errors";
 import {
+  calculateWholesaleCart,
+  normalizeWholesaleMode,
+  type WholesaleProductLike,
+} from "@/lib/wholesale";
+import {
+  CheckCircle2,
   Eye,
   PackageCheck,
   Plus,
@@ -25,6 +32,7 @@ import {
   Search,
   Trash2,
   WalletCards,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -41,9 +49,11 @@ type SaleLine = {
   size: string;
   quantity: number;
   price: number;
+  regularPrice: number;
   subtotal: number;
   mainImage: string;
   wholesaleType?: WholesaleMode;
+  wholesalePrice?: number | null;
   wholesaleMinimum?: number;
 };
 
@@ -135,6 +145,14 @@ function getAvailableSizes(product: FirebaseProduct) {
   );
 }
 
+function getPieceLabel(quantity: number) {
+  return quantity === 1 ? "1 pieza" : `${quantity} piezas`;
+}
+
+function getSizeOptionLabel(product: FirebaseProduct, size: string) {
+  return `Talla ${size} — ${getPieceLabel(getStockForSize(product, size))}`;
+}
+
 function isSellableProduct(product: FirebaseProduct) {
   return (
     product.isActive &&
@@ -218,10 +236,34 @@ function createLineFromProduct(
     size,
     quantity,
     price,
+    regularPrice: product.price,
     subtotal: quantity * price,
     mainImage,
     wholesaleType: product.wholesaleMode,
+    wholesalePrice: product.wholesalePrice ?? null,
     wholesaleMinimum: product.wholesaleMinQuantity,
+  };
+}
+
+function productToWholesaleLike(product: FirebaseProduct): WholesaleProductLike {
+  return {
+    id: product.id,
+    name: product.name,
+    price: product.price,
+    wholesaleMode: normalizeWholesaleMode(product.wholesaleMode),
+    wholesalePrice: product.wholesalePrice ?? null,
+    wholesaleMinQuantity: product.wholesaleMinQuantity,
+  };
+}
+
+function saleLineToWholesaleLike(line: SaleLine): WholesaleProductLike {
+  return {
+    id: line.productId,
+    name: line.productName,
+    price: line.regularPrice,
+    wholesaleMode: normalizeWholesaleMode(line.wholesaleType),
+    wholesalePrice: line.wholesalePrice ?? null,
+    wholesaleMinQuantity: line.wholesaleMinimum ?? 0,
   };
 }
 
@@ -242,10 +284,6 @@ function saleLineToOrderItem(line: SaleLine): FirebaseOrderItem {
     wholesaleType: line.wholesaleType,
     wholesaleMinimum: line.wholesaleMinimum,
   };
-}
-
-function getStockErrorMessage(productName: string, size: string) {
-  return `No hay suficientes piezas de la talla ${size} en ${productName}.`;
 }
 
 function ProductThumb({ product }: { product: FirebaseProduct }) {
@@ -269,12 +307,14 @@ function ProductThumb({ product }: { product: FirebaseProduct }) {
 }
 
 export default function AdminSalesPage() {
+  const { settings } = useSiteSettings();
   const [products, setProducts] = useState<FirebaseProduct[]>([]);
   const [sales, setSales] = useState<StoreSale[]>([]);
   const [selectedProductId, setSelectedProductId] = useState("");
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [price, setPrice] = useState(0);
+  const [isPriceManuallyEdited, setIsPriceManuallyEdited] = useState(false);
   const [saleLines, setSaleLines] = useState<SaleLine[]>([]);
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("Efectivo");
@@ -345,7 +385,6 @@ export default function AdminSalesPage() {
           .reduce((total, line) => total + line.quantity, 0)
       : 0;
   const remainingStock = Math.max(availableStock - quantityAlreadyInSale, 0);
-  const lineSubtotal = price * quantity;
   const saleTotal = saleLines.reduce((total, line) => total + line.subtotal, 0);
   const saleTotalItems = saleLines.reduce(
     (total, line) => total + line.quantity,
@@ -354,6 +393,43 @@ export default function AdminSalesPage() {
   const filteredSales = filterSales(sales, filter);
   const showNoResults =
     normalizeSearchText(searchTerm).length > 0 && visibleProducts.length === 0;
+  const candidateWholesalePrice = useMemo(() => {
+    if (!selectedProduct || !selectedSize || quantity <= 0) {
+      return selectedProduct?.price ?? 0;
+    }
+
+    const cartLines = [
+      ...saleLines.map((line) => ({
+        productId: line.productId,
+        product: saleLineToWholesaleLike(line),
+        quantity: line.quantity,
+      })),
+      {
+        productId: selectedProduct.id,
+        product: productToWholesaleLike(selectedProduct),
+        quantity,
+      },
+    ];
+    const pricedLines = calculateWholesaleCart(
+      cartLines,
+      settings.wholesaleSettings
+    );
+
+    return pricedLines[pricedLines.length - 1]?.unitPrice ?? selectedProduct.price;
+  }, [quantity, saleLines, selectedProduct, selectedSize, settings.wholesaleSettings]);
+  const effectivePrice = isPriceManuallyEdited ? price : candidateWholesalePrice;
+  const lineSubtotal = effectivePrice * quantity;
+  const addLineDisabledReason = useMemo(() => {
+    if (!selectedProduct) return "Selecciona un producto.";
+    if (!selectedSize) return "Selecciona una talla.";
+    if (quantity <= 0) return "Ingresa una cantidad válida.";
+    if (effectivePrice <= 0) return "Ingresa un precio válido.";
+    if (quantity > remainingStock) return "No hay suficiente stock.";
+    return "";
+  }, [effectivePrice, quantity, remainingStock, selectedProduct, selectedSize]);
+  const canAddLine = addLineDisabledReason.length === 0;
+  const registerSaleDisabledReason =
+    saleLines.length === 0 ? "Agrega al menos un producto a la venta." : "";
 
   function selectProduct(product: FirebaseProduct) {
     const [firstSize = ""] = getAvailableSizes(product);
@@ -361,41 +437,33 @@ export default function AdminSalesPage() {
     setSelectedProductId(product.id);
     setSelectedSize(firstSize);
     setPrice(product.price);
+    setIsPriceManuallyEdited(false);
     setQuantity(1);
     setSearchTerm(product.name);
   }
 
+  function clearSelectedProduct() {
+    setSelectedProductId("");
+    setSelectedSize("");
+    setPrice(0);
+    setIsPriceManuallyEdited(false);
+    setQuantity(1);
+    setSearchTerm("");
+  }
+
   function handleAddLine() {
-    if (!selectedProduct) {
-      toast.error("Selecciona un producto.");
+    if (!canAddLine) {
+      toast.error(addLineDisabledReason);
       return;
     }
 
-    if (!selectedSize) {
-      toast.error("Selecciona una talla disponible.");
-      return;
-    }
-
-    if (quantity <= 0) {
-      toast.error("Agrega la cantidad vendida.");
-      return;
-    }
-
-    if (price <= 0) {
-      toast.error("Agrega el precio de venta.");
-      return;
-    }
-
-    if (quantity > remainingStock) {
-      toast.error(getStockErrorMessage(selectedProduct.name, selectedSize));
-      return;
-    }
+    if (!selectedProduct || !selectedSize) return;
 
     const nextLine = createLineFromProduct(
       selectedProduct,
       selectedSize,
       quantity,
-      price
+      effectivePrice
     );
 
     setSaleLines((currentLines) => {
@@ -458,6 +526,7 @@ export default function AdminSalesPage() {
       setSelectedSize("");
       setQuantity(1);
       setPrice(0);
+      setIsPriceManuallyEdited(false);
       setSaleLines([]);
       setPaymentMethod("Efectivo");
       setNotes("");
@@ -565,11 +634,38 @@ export default function AdminSalesPage() {
                           {product.stock} pieza(s)
                         </span>
                       </span>
+                      {isSelected && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-lime-600 px-2.5 py-1 text-[10px] font-black uppercase text-white">
+                          <CheckCircle2 size={12} />
+                          Seleccionado
+                        </span>
+                      )}
                     </button>
                   );
                 })
               )}
             </div>
+
+            {selectedProduct && (
+              <div className="flex min-w-0 flex-col gap-2 rounded-2xl bg-lime-50 px-3 py-2.5 ring-1 ring-lime-100 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-lime-700">
+                    Producto seleccionado
+                  </p>
+                  <p className="mt-0.5 truncate text-sm font-black text-slate-950">
+                    {selectedProduct.name}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearSelectedProduct}
+                  className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-lime-100 transition hover:bg-lime-50"
+                >
+                  <X size={14} />
+                  Quitar selección
+                </button>
+              </div>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="block sm:col-span-1">
@@ -578,14 +674,19 @@ export default function AdminSalesPage() {
                 </span>
                 <select
                   value={selectedSize}
-                  onChange={(event) => setSelectedSize(event.target.value)}
+                  onChange={(event) => {
+                    setSelectedSize(event.target.value);
+                    setIsPriceManuallyEdited(false);
+                  }}
                   className="mt-1.5 w-full min-w-0 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:mt-2 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
                   disabled={!selectedProduct}
                 >
                   <option value="">Talla</option>
                   {availableSizes.map((size) => (
                     <option key={size} value={size}>
-                      {size} · {getStockForSize(selectedProduct!, size)} pza.
+                      {selectedProduct
+                        ? getSizeOptionLabel(selectedProduct, size)
+                        : `Talla ${size}`}
                     </option>
                   ))}
                 </select>
@@ -614,19 +715,23 @@ export default function AdminSalesPage() {
                 <input
                   type="number"
                   min={0}
-                  value={price}
-                  onChange={(event) =>
-                    setPrice(Math.max(Number(event.target.value) || 0, 0))
-                  }
+                  value={effectivePrice}
+                  onChange={(event) => {
+                    setIsPriceManuallyEdited(true);
+                    setPrice(Math.max(Number(event.target.value) || 0, 0));
+                  }}
                   className="mt-1.5 w-full min-w-0 rounded-xl border border-slate-200 bg-[#fffaf5] px-3 py-2 text-[16px] font-bold outline-none transition focus:border-lime-300 focus:bg-white sm:mt-2 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm"
                 />
+                <p className="mt-1 text-[11px] font-semibold leading-4 text-slate-500">
+                  Puedes modificarlo si hiciste un descuento.
+                </p>
               </label>
             </div>
 
             <div className="flex flex-col gap-2 rounded-2xl bg-lime-50 px-3 py-2.5 text-xs font-black text-lime-800 ring-1 ring-lime-100 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3">
               <span>
                 {selectedProduct && selectedSize
-                  ? `${remainingStock} pieza(s) disponibles para agregar.`
+                  ? `${getPieceLabel(remainingStock)} disponibles para agregar.`
                   : "Selecciona producto y talla."}
               </span>
               <span>{formatPrice(lineSubtotal || 0)}</span>
@@ -635,11 +740,17 @@ export default function AdminSalesPage() {
             <button
               type="button"
               onClick={handleAddLine}
-              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-800 sm:min-h-12 sm:px-5 sm:py-3 sm:text-sm"
+              disabled={!canAddLine}
+              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:min-h-12 sm:px-5 sm:py-3 sm:text-sm"
             >
               <Plus size={18} />
               Agregar a la venta
             </button>
+            {addLineDisabledReason && (
+              <p className="text-center text-xs font-bold text-slate-500">
+                {addLineDisabledReason}
+              </p>
+            )}
           </div>
         </section>
 
@@ -679,7 +790,7 @@ export default function AdminSalesPage() {
                       {line.productName}
                     </p>
                     <p className="mt-1 text-xs font-bold text-slate-500">
-                      Talla {line.size} · {line.quantity} pza. ·{" "}
+                      Talla {line.size} · {getPieceLabel(line.quantity)} ·{" "}
                       {formatPrice(line.price)} c/u
                     </p>
                   </div>
@@ -753,6 +864,11 @@ export default function AdminSalesPage() {
             <PackageCheck size={18} />
             {isSaving ? "Registrando venta..." : "Registrar venta"}
           </button>
+          {registerSaleDisabledReason && (
+            <p className="mt-2 text-center text-xs font-bold text-slate-500">
+              {registerSaleDisabledReason}
+            </p>
+          )}
         </section>
       </div>
 
@@ -831,7 +947,7 @@ export default function AdminSalesPage() {
                             {getItemName(item)}
                           </p>
                           <p className="mt-1 text-xs font-bold text-slate-500">
-                            Talla {item.size} · {item.quantity} pieza(s) ·{" "}
+                            Talla {item.size} · {getPieceLabel(item.quantity)} ·{" "}
                             {formatPrice(item.subtotal)}
                           </p>
                         </div>

@@ -1,8 +1,10 @@
 export type ProductCategory = "Niño" | "Niña" | "Unisex";
 
+export type ProductSection = "nina" | "nino" | "unisex";
+
 export type ProductSubcategory = string;
 
-export type WholesaleMode = "none" | "surtido" | "producto";
+export type WholesaleMode = "none" | "surtido" | "producto" | "mixed" | "product";
 
 export type ProductBadge =
   | "Nuevo"
@@ -31,6 +33,7 @@ export type Product = {
   slug: string;
   name: string;
   category: ProductCategory;
+  sections?: ProductSection[];
   subcategory: ProductSubcategory;
   price: number;
   sizes: string[];
@@ -55,7 +58,9 @@ export type Product = {
   isSeasonal?: boolean;
   isTrending?: boolean;
   isLastUnits?: boolean;
+  isTestProduct?: boolean;
   wholesaleMode?: WholesaleMode;
+  wholesalePrice?: number | null;
   wholesaleMinQuantity?: number;
   wholesaleNote?: string;
 };
@@ -101,13 +106,111 @@ export const subcategories: ProductSubcategory[] = [
 /**
  * Productos locales de respaldo.
  *
- * Antes aquí estaban los productos de ejemplo del boceto.
- * Se dejaron vacíos para que la tienda use únicamente los productos
+ * Respaldo local vacío para que la tienda use únicamente los productos
  * agregados desde el panel vendedor en Firebase.
  */
 export const products: Product[] = [];
 
+type PublicProductLike = {
+  name: string;
+  isTestProduct?: boolean | null;
+};
+
+function normalizePublicProductName(name: string) {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+export function isPublicStoreProduct(product: PublicProductLike) {
+  if (product.isTestProduct) return false;
+
+  const name = normalizePublicProductName(product.name);
+  return !["ejemplo", "prueba", "pasarela", "producto de prueba"].some(
+    (term) => name.includes(term)
+  );
+}
+
 export const mainCategories: ProductCategory[] = ["Niño", "Niña", "Unisex"];
+
+export const sectionOptions: Array<{
+  value: ProductSection;
+  label: ProductCategory;
+}> = [
+  { value: "nina", label: "Niña" },
+  { value: "nino", label: "Niño" },
+  { value: "unisex", label: "Unisex" },
+];
+
+export function categoryToSection(
+  category?: ProductCategory | string | null
+): ProductSection | null {
+  if (category === "Niña") return "nina";
+  if (category === "Niño") return "nino";
+  if (category === "Unisex") return "unisex";
+  return null;
+}
+
+export function sectionToCategory(section: ProductSection): ProductCategory {
+  if (section === "nina") return "Niña";
+  if (section === "nino") return "Niño";
+  return "Unisex";
+}
+
+function isProductSection(value: unknown): value is ProductSection {
+  return value === "nina" || value === "nino" || value === "unisex";
+}
+
+export function normalizeProductSections(product: {
+  sections?: unknown;
+  category?: ProductCategory | string | null;
+}) {
+  const savedSections = Array.isArray(product.sections)
+    ? product.sections.filter(isProductSection)
+    : [];
+
+  if (savedSections.length > 0) {
+    return Array.from(new Set(savedSections));
+  }
+
+  const fallbackSection = categoryToSection(product.category);
+  return fallbackSection ? [fallbackSection] : [];
+}
+
+export function productAppearsInSection(
+  product: { sections?: unknown; category?: ProductCategory | string | null },
+  section: ProductSection
+) {
+  return normalizeProductSections(product).includes(section);
+}
+
+export function primaryCategoryFromSections(
+  sections: ProductSection[],
+  fallback: ProductCategory = "Niña"
+) {
+  const [firstSection] = sections;
+
+  if (firstSection && firstSection !== "unisex") {
+    return sectionToCategory(firstSection);
+  }
+
+  if (sections.includes("nina")) return "Niña";
+  if (sections.includes("nino")) return "Niño";
+  if (firstSection) return sectionToCategory(firstSection);
+
+  return fallback;
+}
+
+export function getSectionLabels(product: {
+  sections?: unknown;
+  category?: ProductCategory | string | null;
+}) {
+  return normalizeProductSections(product)
+    .map(sectionToCategory)
+    .join(", ");
+}
 
 export const colorOptions = [
   "Rosa",
@@ -123,27 +226,37 @@ export const colorOptions = [
 ];
 
 export function getFeaturedOffers() {
-  return products.filter((product) => product.isOffer).slice(0, 5);
+  return products
+    .filter((product) => isPublicStoreProduct(product) && product.isOffer)
+    .slice(0, 5);
 }
 
 export function getProductBySlug(slug: string) {
-  return products.find((product) => product.slug === slug);
+  const product = products.find((item) => item.slug === slug);
+  return product && isPublicStoreProduct(product) ? product : undefined;
 }
 
 export function getProductsByAudience(audience: "Niña" | "Niño") {
+  const section = categoryToSection(audience);
+
   return products.filter(
-    (product) => product.category === audience || product.category === "Unisex"
+    (product) =>
+      isPublicStoreProduct(product) &&
+      Boolean(section && productAppearsInSection(product, section))
   );
 }
 
 export function getRelatedProducts(product: Product) {
+  const productSections = normalizeProductSections(product);
+
   return products
     .filter(
       (item) =>
+        isPublicStoreProduct(item) &&
         item.id !== product.id &&
-        (item.category === product.category ||
-          item.category === "Unisex" ||
-          product.category === "Unisex" ||
+        (normalizeProductSections(item).some((section) =>
+          productSections.includes(section)
+        ) ||
           item.subcategory === product.subcategory)
     )
     .slice(0, 3);

@@ -7,7 +7,7 @@ import {
   getCachedActiveProducts,
 } from "@/lib/firebase-services/products";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
-import { getFeaturedOffers } from "@/lib/products";
+import { getFeaturedOffers, isPublicStoreProduct } from "@/lib/products";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -16,10 +16,19 @@ function getCachedFeaturedOffers() {
   const cachedProducts = getCachedActiveProducts();
 
   return cachedProducts
+    .filter(isPublicStoreProduct)
     .filter((product) => product.isFeatured || product.isOffer)
     .sort((a, b) => a.featuredOrder - b.featuredOrder)
     .slice(0, 5)
     .map(mapFirebaseProductToProduct);
+}
+
+function getDateValue(value: { toDate?: () => Date } | Date | string | null) {
+  if (!value) return 0;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") return Date.parse(value) || 0;
+  if (typeof value.toDate === "function") return value.toDate().getTime();
+  return 0;
 }
 
 export default function HomeProductHighlights() {
@@ -48,24 +57,31 @@ export default function HomeProductHighlights() {
         if (!isCurrent || firebaseProducts.length === 0) return;
 
         const featuredIds = homepageSettings?.featuredProductIds ?? [];
+        const publicProducts = firebaseProducts.filter(isPublicStoreProduct);
         const selectedProducts =
           featuredIds.length > 0
             ? featuredIds
                 .map((id) =>
-                  firebaseProducts.find((product) => product.id === id)
+                  publicProducts.find((product) => product.id === id)
                 )
                 .filter(
                   (product): product is (typeof firebaseProducts)[number] =>
                     Boolean(product)
                 )
-            : firebaseProducts
+            : publicProducts
                 .filter((product) => product.isFeatured)
                 .sort((a, b) => a.featuredOrder - b.featuredOrder);
+        const homeProducts =
+          selectedProducts.length > 0
+            ? selectedProducts
+            : [...publicProducts].sort(
+                (a, b) => getDateValue(b.createdAt) - getDateValue(a.createdAt)
+              );
 
-        if (selectedProducts.length === 0) return;
+        if (homeProducts.length === 0) return;
 
         setFeaturedOffers(
-          selectedProducts
+          homeProducts
             .slice(0, 5)
             .map((product) => mapFirebaseProductToProduct(product))
         );
@@ -94,13 +110,13 @@ export default function HomeProductHighlights() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-5 max-w-3xl sm:mb-7">
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-rose-500 sm:text-xs">
-            Precio especial
+            Selección de boutique
           </p>
           <h2 className="mt-1.5 text-2xl font-black leading-tight text-slate-950 sm:mt-2 sm:text-4xl">
-            Ofertas destacadas
+            Prendas destacadas
           </h2>
           <p className="mt-2 max-w-xl text-sm font-bold leading-6 text-slate-500 sm:text-base">
-            Prendas seleccionadas con precio especial por tiempo limitado.
+            Piezas elegidas para encontrar rápido lo más especial de la colección.
           </p>
         </div>
 
@@ -130,14 +146,14 @@ export default function HomeProductHighlights() {
             href="/nina?filtro=Ofertas"
             className="inline-flex items-center justify-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-xs font-black text-slate-800 shadow-sm ring-1 ring-rose-100 transition hover:bg-rose-50 sm:gap-2 sm:px-5 sm:py-3 sm:text-sm"
           >
-            Ofertas Niña
+            Colección Niña
             <ArrowRight size={15} />
           </Link>
           <Link
             href="/nino?filtro=Ofertas"
             className="inline-flex items-center justify-center gap-1.5 rounded-full bg-slate-950 px-4 py-2.5 text-xs font-black text-white shadow-sm transition hover:scale-[1.02] sm:gap-2 sm:px-5 sm:py-3 sm:text-sm"
           >
-            Ofertas Niño
+            Colección Niño
             <ArrowRight size={15} />
           </Link>
         </div>

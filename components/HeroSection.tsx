@@ -1,56 +1,19 @@
-"use client";
-
-import { getHomepageSettings } from "@/lib/firebase-services/homepage";
 import { heroHighlights, heroImages } from "@/lib/site";
 import { ArrowRight, Gift, Shirt, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
-const defaultHero = {
-  title: "Nueva temporada para niñas y niños.",
+const hero = {
+  title: "Colección infantil para cada día.",
   subtitle:
-    "Ropa infantil cómoda, colorida y fácil de elegir por talla, estilo y sección.",
-  girlButtonText: "Ver Niña",
-  boyButtonText: "Ver Niño",
+    "Prendas cómodas y bonitas para niñas y niños, fáciles de elegir por talla y sección.",
+  girlButtonText: "Colección Niña",
+  boyButtonText: "Colección Niño",
   heroGirlImage: heroImages.girl,
   heroBoyImage: heroImages.boy,
   heroLooksImage: heroImages.looks,
 };
 
 export default function HeroSection() {
-  const [hero, setHero] = useState(defaultHero);
-
-  useEffect(() => {
-    let isCurrent = true;
-
-    async function loadHero() {
-      try {
-        const settings = await getHomepageSettings();
-
-        if (!isCurrent || !settings) return;
-
-        setHero({
-          title: settings.heroTitle || defaultHero.title,
-          subtitle: settings.heroSubtitle || defaultHero.subtitle,
-          girlButtonText:
-            settings.girlButtonText || defaultHero.girlButtonText,
-          boyButtonText: settings.boyButtonText || defaultHero.boyButtonText,
-          heroGirlImage: settings.heroGirlImage || defaultHero.heroGirlImage,
-          heroBoyImage: settings.heroBoyImage || defaultHero.heroBoyImage,
-          heroLooksImage: settings.heroLooksImage || defaultHero.heroLooksImage,
-        });
-      } catch {
-        // Keep the designed fallback if the saved portada is not available.
-      }
-    }
-
-    void loadHero();
-
-    return () => {
-      isCurrent = false;
-    };
-  }, []);
-
   return (
     <section className="relative overflow-hidden bg-[#fffaf5] text-slate-900">
       <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(251,113,133,0.10)_0_28%,transparent_28%_52%,rgba(125,211,252,0.13)_52%_78%,rgba(254,240,138,0.13)_78%_100%)]" />
@@ -58,9 +21,9 @@ export default function HeroSection() {
 
       <div className="relative mx-auto grid max-w-7xl items-center gap-5 px-4 py-6 sm:min-h-[520px] sm:px-5 sm:py-10 lg:grid-cols-[1.02fr_0.98fr] lg:py-12">
         <div className="max-w-4xl">
-          <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[11px] font-black uppercase text-rose-500 shadow-sm ring-1 ring-rose-100 sm:mb-4 sm:px-4 sm:py-2 sm:text-sm">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-xl border-l-2 border-rose-300 bg-white/70 px-3 py-1.5 text-[11px] font-black uppercase text-rose-500 ring-1 ring-white/80 sm:mb-4 sm:px-4 sm:py-2 sm:text-sm">
             <Gift size={14} />
-            Catálogo infantil
+            Boutique infantil
           </div>
 
           <h1 className="max-w-4xl text-[2.55rem] font-black leading-[0.95] tracking-[-0.03em] text-slate-950 sm:text-6xl sm:leading-[1.02] lg:text-7xl">
@@ -93,7 +56,7 @@ export default function HeroSection() {
             {heroHighlights.slice(0, 3).map((item, index) => (
               <div
                 key={item}
-                className="inline-flex items-center gap-1.5 rounded-full bg-white/85 px-3 py-1.5 text-[11px] font-black text-slate-700 shadow-sm ring-1 ring-slate-100 sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
+                className="inline-flex items-center gap-1.5 rounded-2xl border-l-2 border-rose-200 bg-white/70 px-3 py-1.5 text-[11px] font-black text-slate-700 ring-1 ring-white/80 sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
               >
                 {index % 2 === 0 ? (
                   <Sparkles className="text-rose-400" size={15} />

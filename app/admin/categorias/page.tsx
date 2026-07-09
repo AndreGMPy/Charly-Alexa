@@ -1,8 +1,6 @@
 "use client";
 
-import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import {
-  cleanupDuplicateBaseCategories,
   createSubcategory,
   deleteSubcategory,
   ensureBaseCategories,
@@ -22,7 +20,6 @@ import {
   ArrowDown,
   ArrowUp,
   CheckCircle2,
-  ImageIcon,
   Pencil,
   Plus,
   RefreshCw,
@@ -37,7 +34,6 @@ import { toast } from "sonner";
 
 type SubcategoryFormValues = {
   name: string;
-  imageUrl: string;
   isActive: boolean;
 };
 
@@ -48,12 +44,10 @@ const mainCategoryDefaults: Array<{
 }> = [
   { id: "nina", name: "Niña", slug: "nina" },
   { id: "nino", name: "Niño", slug: "nino" },
-  { id: "unisex", name: "Unisex", slug: "unisex" },
 ];
 
 const initialSubcategoryForm: SubcategoryFormValues = {
   name: "",
-  imageUrl: "",
   isActive: true,
 };
 
@@ -88,20 +82,6 @@ function sortSubcategories(items: FirebaseSubcategory[]) {
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
     return a.name.localeCompare(b.name, "es-MX");
   });
-}
-
-function getDuplicateBaseCount(categories: FirebaseCategory[]) {
-  return mainCategoryDefaults.reduce((count, baseCategory) => {
-    const matches = categories.filter((category) => {
-      const slug = createSlug(category.slug || category.name);
-      return slug === baseCategory.slug;
-    });
-    const hasWrongDocument = matches.some(
-      (category) => category.id !== baseCategory.id
-    );
-
-    return count + (matches.length > 1 || hasWrongDocument ? 1 : 0);
-  }, 0);
 }
 
 function getNextSubcategoryOrder(
@@ -143,23 +123,11 @@ export default function AdminCategoriesPage() {
       ),
     [selectedCategory, sortedSubcategories]
   );
-  const duplicateBaseCount = useMemo(
-    () => getDuplicateBaseCount(allCategories),
-    [allCategories]
-  );
   const hasSavedBaseCategories = mainCategoryDefaults.every((baseCategory) =>
     allCategories.some((category) => category.id === baseCategory.id)
   );
 
-  const subcategoryImageStoragePath = useMemo(() => {
-    return `subcategories/${
-      editingSubcategory?.id || createSlug(form.name) || "nueva"
-    }`;
-  }, [editingSubcategory?.id, form.name]);
-  const selectedCategoryTitle =
-    selectedCategory === "Unisex"
-      ? "Subcategorías Unisex"
-      : `Subcategorías de ${selectedCategory}`;
+  const selectedCategoryTitle = `Subcategorías de ${selectedCategory}`;
   const subcategoryFormTitle = editingSubcategory
     ? `Editar subcategoría de ${selectedCategory}`
     : `Agregar subcategoría a ${selectedCategory}`;
@@ -176,9 +144,21 @@ export default function AdminCategoriesPage() {
           getSubcategories(),
         ]);
 
-      setCategories(uniqueCategories);
+      setCategories(
+        uniqueCategories.filter((category) =>
+          mainCategoryDefaults.some((base) => base.name === category.name)
+        )
+      );
       setAllCategories(categoryItems);
-      setSubcategories(sortSubcategories(subcategoryItems));
+      setSubcategories(
+        sortSubcategories(
+          subcategoryItems.filter((subcategory) =>
+            mainCategoryDefaults.some(
+              (base) => base.name === subcategory.parentCategory
+            )
+          )
+        )
+      );
     } catch {
       setError("No se pudieron cargar las categorías.");
     } finally {
@@ -221,25 +201,6 @@ export default function AdminCategoriesPage() {
     }
   }
 
-  async function handleCleanupDuplicates() {
-    const shouldClean = window.confirm(
-      "Se eliminarán categorías principales repetidas. No se borrarán productos ni subcategorías."
-    );
-
-    if (!shouldClean) return;
-
-    try {
-      setIsSaving(true);
-      await cleanupDuplicateBaseCategories();
-      toast.success("Categorías duplicadas corregidas");
-      await loadCategories();
-    } catch {
-      toast.error("No se pudieron corregir las categorías duplicadas");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
   async function handleToggleCategory(category: FirebaseCategory) {
     try {
       setBusyId(category.id);
@@ -270,7 +231,6 @@ export default function AdminCategoriesPage() {
     setEditingSubcategory(subcategory);
     setForm({
       name: subcategory.name,
-      imageUrl: subcategory.imageUrl ?? "",
       isActive: subcategory.isActive,
     });
   }
@@ -298,7 +258,6 @@ export default function AdminCategoriesPage() {
       name,
       slug: createSlug(name),
       parentCategory: selectedCategory,
-      imageUrl: form.imageUrl.trim(),
       isActive: form.isActive,
       sortOrder,
     };
@@ -463,23 +422,6 @@ export default function AdminCategoriesPage() {
     );
   }
 
-  function renderSubcategoryImage(subcategory: FirebaseSubcategory) {
-    if (subcategory.imageUrl) {
-      return (
-        <div
-          className="h-10 w-10 shrink-0 rounded-2xl bg-cover bg-center ring-1 ring-rose-100 sm:h-12 sm:w-12"
-          style={{ backgroundImage: `url(${subcategory.imageUrl})` }}
-        />
-      );
-    }
-
-    return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 ring-1 ring-rose-100 sm:h-12 sm:w-12">
-        <ImageIcon size={18} />
-      </div>
-    );
-  }
-
   return (
     <section className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -491,10 +433,10 @@ export default function AdminCategoriesPage() {
             Categorías
           </h1>
           <p className="mt-1 text-sm font-medium leading-6 text-slate-600 sm:hidden">
-            Ordena categorías y subcategorías.
+            Organiza tipos de prendas.
           </p>
           <p className="mt-2 hidden max-w-2xl text-sm font-medium leading-6 text-slate-600 sm:block">
-            Organiza las secciones de la tienda con nombres claros. Usa las flechas para acomodar el orden.
+            Organiza los tipos de prendas para Niña y Niño.
           </p>
         </div>
 
@@ -520,17 +462,6 @@ export default function AdminCategoriesPage() {
             </button>
           )}
 
-          {duplicateBaseCount > 0 && (
-            <button
-              type="button"
-              onClick={() => void handleCleanupDuplicates()}
-              disabled={isSaving}
-              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-amber-50 px-4 py-2 text-xs font-black text-amber-700 shadow-sm ring-1 ring-amber-100 transition hover:bg-amber-100 disabled:text-amber-300 sm:min-h-12 sm:w-auto sm:px-5 sm:py-3 sm:text-sm"
-            >
-              <Trash2 size={16} />
-              Limpiar duplicados
-            </button>
-          )}
         </div>
       </div>
 
@@ -540,7 +471,7 @@ export default function AdminCategoriesPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         {categories.map((category) => {
           const isSelected = selectedCategory === category.name;
 
@@ -577,7 +508,7 @@ export default function AdminCategoriesPage() {
                     {category.name}
                   </h2>
                   <p className="mt-1 hidden text-xs font-bold text-slate-600 sm:block">
-                    {category.name === "Unisex" ? "Opcional" : "Principal"}
+                    Principal
                   </p>
                 </div>
 
@@ -631,9 +562,6 @@ export default function AdminCategoriesPage() {
             <h2 className="mt-1 text-lg font-black text-slate-950 sm:text-xl">
               {subcategoryFormTitle}
             </h2>
-            <p className="mt-1 hidden text-sm font-medium text-slate-600 sm:block">
-              La imagen es opcional. Sirve para mostrar esta sección de forma visual en la tienda.
-            </p>
             <p className="mt-2 inline-flex rounded-full bg-[#fffaf5] px-3 py-1.5 text-xs font-black text-slate-600 ring-1 ring-rose-100 sm:mt-3">
               {editingSubcategory ? "Se guardará en:" : "Se agregará en:"}{" "}
               {selectedCategory}
@@ -653,17 +581,6 @@ export default function AdminCategoriesPage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1fr_150px]">
-          <div className="hidden lg:col-span-2 sm:block">
-            <ImageUploadField
-              label="Imagen opcional"
-              value={form.imageUrl}
-              onChange={(url) => updateForm("imageUrl", url)}
-              storagePath={subcategoryImageStoragePath}
-              helperText="La imagen es opcional. Sirve para mostrar esta sección de forma visual en la tienda."
-              previewClassName="h-36 sm:h-48"
-            />
-          </div>
-
           <label className="space-y-2">
             <span className={labelClass}>Nombre</span>
             <input
@@ -773,7 +690,6 @@ export default function AdminCategoriesPage() {
                     <tr key={subcategory.id}>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          {renderSubcategoryImage(subcategory)}
                           <p className="text-sm font-black text-slate-950">
                             {subcategory.name}
                           </p>
@@ -849,7 +765,6 @@ export default function AdminCategoriesPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
-                      {renderSubcategoryImage(subcategory)}
                       <h2 className="line-clamp-2 text-sm font-black leading-tight text-slate-950">
                         {subcategory.name}
                       </h2>

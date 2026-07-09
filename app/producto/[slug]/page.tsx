@@ -3,6 +3,7 @@ import ProductDetailClient from "@/components/ProductDetailClient";
 import {
   getProductBySlug,
   getRelatedProducts,
+  isPublicStoreProduct,
   products,
 } from "@/lib/products";
 import { storeConfig } from "@/lib/site";
@@ -15,7 +16,7 @@ type ProductPageProps = {
 };
 
 export function generateStaticParams() {
-  return products.map((product) => ({
+  return products.filter(isPublicStoreProduct).map((product) => ({
     slug: product.slug,
   }));
 }

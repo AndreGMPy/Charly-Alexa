@@ -13,8 +13,8 @@ export default function StoreInfoSection() {
       icon: Ruler,
     },
     {
-      title: "Pedido por WhatsApp",
-      description: `Atención directa al ${settings.whatsappDisplay}.`,
+      title: "Atención por WhatsApp",
+      description: `Te atendemos directo al ${settings.whatsappDisplay}.`,
       icon: MessageCircle,
     },
     {
@@ -63,9 +63,9 @@ export default function StoreInfoSection() {
             return (
               <div
                 key={item.title}
-                className="flex items-center gap-4 rounded-3xl bg-white/80 p-4 shadow-sm ring-1 ring-rose-100 sm:p-5"
+                className="flex items-center gap-4 rounded-2xl bg-white/70 p-4 ring-1 ring-rose-100 sm:p-5"
               >
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-50 text-rose-500 shadow-sm">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-500">
                   <Icon size={22} />
                 </div>
 

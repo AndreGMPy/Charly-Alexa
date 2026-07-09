@@ -59,19 +59,19 @@ const quickActions = [
     className: "bg-lime-50 text-lime-700 ring-1 ring-lime-100 hover:bg-lime-100",
   },
   {
-    label: "Cambiar ofertas",
+    label: "Destacados",
     href: "/admin/inicio",
     icon: Megaphone,
     className: "bg-amber-50 text-amber-700 ring-1 ring-amber-100 hover:bg-amber-100",
   },
   {
-    label: "Editar portada",
+    label: "Portada",
     href: "/admin/inicio",
     icon: Home,
     className: "bg-sky-50 text-sky-700 ring-1 ring-sky-100 hover:bg-sky-100",
   },
   {
-    label: "Editar datos de tienda",
+    label: "Datos de tienda",
     href: "/admin/configuracion",
     icon: Store,
     className: "bg-white text-slate-700 ring-1 ring-slate-100 hover:bg-slate-50",

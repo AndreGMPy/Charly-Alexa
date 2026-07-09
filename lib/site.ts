@@ -1,9 +1,9 @@
 export const storeConfig = {
   name: "Charly Alexa",
   legalName: "Creaciones Charly Alexa",
-  tagline: "Tienda online infantil",
+  tagline: "Boutique infantil en línea",
   description:
-    "Ropa infantil para niñas y niños en tallas 1 a 16, con atención directa por WhatsApp.",
+    "Prendas infantiles para niñas y niños en tallas 1 a 16, con atención directa por WhatsApp.",
   address: "16 de Septiembre No. 3, Zona Centro",
   whatsappDisplay: "445 144 8846",
   whatsappInternational: "524451448846",
@@ -30,7 +30,7 @@ export const heroImages = {
 export const promoTiles = [
   {
     title: "Ofertas nuevas",
-    subtitle: "Prendas seleccionadas con precio especial.",
+    subtitle: "Prendas seleccionadas para renovar el clóset.",
     label: "Ofertas",
     girlFilter: "Ofertas",
     boyFilter: "Ofertas",
@@ -41,7 +41,7 @@ export const promoTiles = [
   },
   {
     title: "Novedades",
-    subtitle: "Lo más reciente para armar looks de temporada.",
+    subtitle: "Llegadas recientes para armar looks de temporada.",
     label: "Nuevo",
     girlFilter: "Novedades",
     boyFilter: "Novedades",
@@ -83,11 +83,11 @@ export const heroHighlights = [
 
 export const shoppingBenefits = [
   {
-    title: "Compra por talla",
+    title: "Elige por talla",
     description: "Elige la talla en cada producto antes de agregar al carrito.",
   },
   {
-    title: "Pedido en línea",
+    title: "Pedido claro",
     description: "El resumen queda listo con productos, tallas, envío y total.",
   },
   {

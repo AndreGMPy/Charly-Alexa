@@ -10,7 +10,13 @@ import {
   type ProductCreateInput,
 } from "@/lib/firebase-services/products";
 import type { FirebaseProduct, MainCategoryName } from "@/lib/firebase-types";
-import { formatPrice } from "@/lib/products";
+import {
+  categoryToSection,
+  formatPrice,
+  getSectionLabels,
+  isPublicStoreProduct,
+  productAppearsInSection,
+} from "@/lib/products";
 import {
   getSafeFirebaseActionMessage,
   logErrorInDevelopment,
@@ -68,6 +74,10 @@ function getStatusClass(product: AdminProduct) {
   if (status === "Visible") return "bg-emerald-50 text-emerald-700";
   if (status === "Agotado") return "bg-amber-50 text-amber-700";
   return "bg-slate-100 text-slate-700";
+}
+
+function isAdminTestProduct(product: AdminProduct) {
+  return !isPublicStoreProduct(product);
 }
 
 function getInternalBasePrice(product: AdminProduct) {
@@ -136,7 +146,10 @@ export default function AdminProductsClient() {
     const filteredProducts =
       productCategoryFilter === "Todas"
         ? products
-        : products.filter((product) => product.category === productCategoryFilter);
+        : products.filter((product) => {
+            const section = categoryToSection(productCategoryFilter);
+            return section ? productAppearsInSection(product, section) : false;
+          });
     const uniqueSubcategories = Array.from(
       new Set(
         filteredProducts
@@ -154,7 +167,13 @@ export default function AdminProductsClient() {
         const matchesStatus = matchesProductFilter(product, productFilter);
         const matchesCategory =
           productCategoryFilter === "Todas" ||
-          product.category === productCategoryFilter;
+          Boolean(
+            categoryToSection(productCategoryFilter) &&
+              productAppearsInSection(
+                product,
+                categoryToSection(productCategoryFilter)!
+              )
+          );
         const matchesSubcategory =
           subcategoryFilter === "Todas" ||
           product.subcategory === subcategoryFilter;
@@ -277,6 +296,7 @@ export default function AdminProductsClient() {
       description: product.description,
       longDescription: product.longDescription,
       category: product.category,
+      sections: product.sections ?? [],
       subcategory: product.subcategory,
       price: product.price,
       ...(product.basePrice ? { basePrice: product.basePrice } : {}),
@@ -299,6 +319,7 @@ export default function AdminProductsClient() {
       homeSection: product.homeSection,
       status: product.status ?? (product.isActive ? "active" : "inactive"),
       wholesaleMode: product.wholesaleMode,
+      wholesalePrice: product.wholesalePrice ?? null,
       wholesaleMinQuantity: product.wholesaleMinQuantity,
       wholesaleNote: product.wholesaleNote ?? "",
     };
@@ -597,8 +618,8 @@ export default function AdminProductsClient() {
             Todavía no hay productos
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-xs font-bold leading-5 text-slate-600 sm:text-sm sm:leading-6">
-            Ya se quitaron los productos de ejemplo. Empieza agregando tus
-            propios productos desde el botón “Agregar producto”.
+            Aún no hay productos activos en la boutique. Empieza agregando una
+            prenda desde el botón “Agregar producto”.
           </p>
           <button
             type="button"
@@ -631,7 +652,7 @@ export default function AdminProductsClient() {
             <thead className="bg-[#fffaf5] text-xs font-black uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-5 py-4">Producto</th>
-                <th className="px-5 py-4">Categoría</th>
+                <th className="px-5 py-4">Secciones</th>
                 <th className="px-5 py-4">Precio</th>
                 <th className="px-5 py-4">Piezas</th>
                 <th className="px-5 py-4">Estado</th>
@@ -648,19 +669,36 @@ export default function AdminProductsClient() {
                         <p className="truncate text-sm font-black text-slate-950">
                           {product.name}
                         </p>
-                        <p className="mt-1 text-xs font-bold text-slate-600">
-                          {product.stock} pieza(s) disponibles
-                        </p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <span className="text-xs font-bold text-slate-600">
+                            {product.stock} pieza(s) disponibles
+                          </span>
+                          {isAdminTestProduct(product) && (
+                            <>
+                              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase text-amber-700 ring-1 ring-amber-100">
+                                Prueba
+                              </span>
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase text-slate-600">
+                                Oculto en tienda
+                              </span>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-sm font-bold text-slate-600">
                     <div>
-                      {product.category} · {product.subcategory}
+                      {getSectionLabels(product) || product.category} ·{" "}
+                      {product.subcategory}
                     </div>
                     {product.wholesaleMode !== "none" && (
                       <div className="mt-1 text-xs font-black text-amber-700">
-                        Mayoreo {product.wholesaleMode === "surtido" ? "surtido" : "por producto"}
+                        Mayoreo{" "}
+                        {product.wholesaleMode === "mixed" ||
+                        product.wholesaleMode === "surtido"
+                          ? "surtido"
+                          : "por producto"}
                       </div>
                     )}
                   </td>
@@ -716,16 +754,24 @@ export default function AdminProductsClient() {
                     {product.name}
                   </h2>
                   <p className="mt-1 line-clamp-1 text-xs font-bold text-slate-600">
-                    {product.category} · {product.subcategory}
+                    {getSectionLabels(product) || product.category} ·{" "}
+                    {product.subcategory}
                   </p>
                 </div>
-                <span
-                  className={`mt-2 inline-flex shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black ${getStatusClass(
-                    product
-                  )}`}
-                >
-                  {getStatusLabel(product)}
-                </span>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span
+                    className={`inline-flex shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black ${getStatusClass(
+                      product
+                    )}`}
+                  >
+                    {getStatusLabel(product)}
+                  </span>
+                  {isAdminTestProduct(product) && (
+                    <span className="inline-flex shrink-0 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-700 ring-1 ring-amber-100">
+                      Prueba · Oculto en tienda
+                    </span>
+                  )}
+                </div>
               </div>
               </div>
 

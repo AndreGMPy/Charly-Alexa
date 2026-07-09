@@ -1,6 +1,6 @@
 import FloatingActions from "@/components/FloatingActions";
 import GenderProductSection from "@/components/GenderProductSection";
-import { products } from "@/lib/products";
+import { isPublicStoreProduct, productAppearsInSection, products } from "@/lib/products";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import Link from "next/link";
 
@@ -19,7 +19,9 @@ export default async function NinaPage({ searchParams }: NinaPageProps) {
   const initialFilter = getInitialFilter(filtro);
 
   const girlProducts = products.filter(
-    (product) => product.category === "Niña" || product.category === "Unisex"
+    (product) =>
+      isPublicStoreProduct(product) &&
+      productAppearsInSection(product, "nina")
   );
 
   return (
@@ -42,7 +44,7 @@ export default async function NinaPage({ searchParams }: NinaPageProps) {
             <div className="mt-10 max-w-4xl">
               <p className="inline-flex items-center gap-2 text-sm font-black uppercase tracking-[0.2em] text-rose-500">
                 <Sparkles size={17} />
-                Catálogo
+                Colección
               </p>
 
               <h1 className="mt-4 text-6xl font-black tracking-tight text-slate-950 sm:text-8xl">

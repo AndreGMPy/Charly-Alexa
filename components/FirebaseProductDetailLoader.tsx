@@ -8,7 +8,11 @@ import {
   getProductBySlug as getSavedProductBySlug,
 } from "@/lib/firebase-services/products";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
-import type { Product } from "@/lib/products";
+import {
+  isPublicStoreProduct,
+  normalizeProductSections,
+  type Product,
+} from "@/lib/products";
 import { ArrowLeft, Search, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -18,13 +22,15 @@ type FirebaseProductDetailLoaderProps = {
 };
 
 function getRelatedProducts(product: Product, products: Product[]) {
+  const productSections = normalizeProductSections(product);
+
   return products
     .filter(
       (item) =>
         item.id !== product.id &&
-        (item.category === product.category ||
-          item.category === "Unisex" ||
-          product.category === "Unisex" ||
+        (normalizeProductSections(item).some((section) =>
+          productSections.includes(section)
+        ) ||
           item.subcategory === product.subcategory)
     )
     .slice(0, 3);
@@ -176,7 +182,9 @@ export default function FirebaseProductDetailLoader({
 
         if (!isCurrent) return;
 
-        const mappedProducts = activeProducts.map(mapFirebaseProductToProduct);
+        const mappedProducts = activeProducts
+          .filter(isPublicStoreProduct)
+          .map(mapFirebaseProductToProduct);
         setRelatedProducts(getRelatedProducts(currentProduct, mappedProducts));
       } catch {
         if (isCurrent) {
@@ -197,7 +205,11 @@ export default function FirebaseProductDetailLoader({
 
         if (!isCurrent) return;
 
-        if (!savedProduct || !savedProduct.isActive) {
+        if (
+          !savedProduct ||
+          !savedProduct.isActive ||
+          !isPublicStoreProduct(savedProduct)
+        ) {
           setLoadState("missing");
           return;
         }

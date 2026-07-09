@@ -6,6 +6,7 @@ import {
   type SiteSettingsInput,
 } from "@/lib/firebase-services/site-settings";
 import { storeConfig } from "@/lib/site";
+import { defaultWholesaleSettings } from "@/lib/wholesale";
 import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { Save, Store } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -22,6 +23,7 @@ const defaultSettings: SiteSettingsInput = {
   hours: "Lunes a sábado de 10:00 a 19:00",
   deliveryText: "Envío nacional a la dirección indicada.",
   paymentText: "Pago en línea seguro o acuerdo por WhatsApp.",
+  wholesaleSettings: defaultWholesaleSettings,
   social: {
     instagram: "",
     facebook: "",
@@ -63,6 +65,17 @@ export default function AdminSettingsPage() {
           deliveryText:
             settings.deliveryText || defaultSettings.deliveryText,
           paymentText: settings.paymentText || defaultSettings.paymentText,
+          wholesaleSettings: {
+            mixedWholesaleEnabled:
+              settings.wholesaleSettings?.mixedWholesaleEnabled ??
+              defaultSettings.wholesaleSettings.mixedWholesaleEnabled,
+            mixedWholesaleMinQuantity:
+              settings.wholesaleSettings?.mixedWholesaleMinQuantity ??
+              defaultSettings.wholesaleSettings.mixedWholesaleMinQuantity,
+            wholesaleInfoText:
+              settings.wholesaleSettings?.wholesaleInfoText ||
+              defaultSettings.wholesaleSettings.wholesaleInfoText,
+          },
           social: {
             instagram: settings.social?.instagram ?? "",
             facebook: settings.social?.facebook ?? "",
@@ -109,6 +122,19 @@ export default function AdminSettingsPage() {
     }));
   }
 
+  function updateWholesaleField<Field extends keyof SiteSettingsInput["wholesaleSettings"]>(
+    field: Field,
+    value: SiteSettingsInput["wholesaleSettings"][Field]
+  ) {
+    setForm((current) => ({
+      ...current,
+      wholesaleSettings: {
+        ...current.wholesaleSettings,
+        [field]: value,
+      },
+    }));
+  }
+
   async function handleSave() {
     setError("");
 
@@ -140,8 +166,8 @@ export default function AdminSettingsPage() {
             Datos de tienda
           </h1>
           <p className="mt-1 max-w-2xl text-sm font-medium leading-6 text-slate-500 sm:mt-2">
-            Edita la información visible para tus clientas: contacto, horario,
-            entrega, pagos y redes sociales.
+            Mantén actualizados los datos de contacto, horario, entrega, pagos
+            y redes sociales.
           </p>
         </div>
 
@@ -169,17 +195,17 @@ export default function AdminSettingsPage() {
           </div>
           <div>
             <h2 className="text-lg font-black text-slate-950">
-              Información principal
+              Información de la boutique
             </h2>
             <p className="text-sm font-medium text-slate-500">
-              {isLoading ? "Cargando datos..." : "Lista para editar"}
+              {isLoading ? "Cargando datos..." : "Datos principales"}
             </p>
           </div>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
           <label className="space-y-2">
-            <span className={labelClass}>Nombre de tienda</span>
+            <span className={labelClass}>Nombre de la boutique</span>
             <input
               value={form.storeName}
               onChange={(event) =>
@@ -190,38 +216,7 @@ export default function AdminSettingsPage() {
             />
           </label>
 
-          <label className="space-y-2">
-            <span className={labelClass}>Eslogan</span>
-            <input
-              value={form.slogan}
-              onChange={(event) => updateField("slogan", event.target.value)}
-              className={fieldClass}
-              placeholder="Ej. Tienda online infantil"
-            />
-          </label>
-
-          <label className="space-y-2 lg:col-span-2">
-            <span className={labelClass}>Descripción corta</span>
-            <textarea
-              value={form.shortDescription}
-              onChange={(event) =>
-                updateField("shortDescription", event.target.value)
-              }
-              className={`${fieldClass} min-h-24 resize-none`}
-              placeholder="Ej. Ropa infantil para niñas y niños..."
-            />
-          </label>
-
-          <div className="lg:col-span-2 grid gap-4 lg:grid-cols-2">
-            <ImageUploadField
-              label="Logo o imagen de marca"
-              value={form.logoUrl}
-              onChange={(url) => updateField("logoUrl", url)}
-              storagePath="site/logo"
-              helperText="Opcional. Se puede usar para futuras secciones de marca."
-              previewClassName="h-40"
-            />
-
+          <div className="lg:col-span-2">
             <ImageUploadField
               label="Foto de tienda / ubicación"
               value={form.storefrontImage}
@@ -263,7 +258,7 @@ export default function AdminSettingsPage() {
           </label>
 
           <label className="space-y-2">
-            <span className={labelClass}>Texto de entrega</span>
+            <span className={labelClass}>Entrega</span>
             <textarea
               value={form.deliveryText}
               onChange={(event) =>
@@ -275,7 +270,7 @@ export default function AdminSettingsPage() {
           </label>
 
           <label className="space-y-2">
-            <span className={labelClass}>Texto de pagos</span>
+            <span className={labelClass}>Pagos</span>
             <textarea
               value={form.paymentText}
               onChange={(event) =>
@@ -283,6 +278,69 @@ export default function AdminSettingsPage() {
               }
               className={`${fieldClass} min-h-24 resize-none`}
               placeholder="Ej. Pago en línea seguro o acuerdo por WhatsApp..."
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
+        <div className="mb-5">
+          <h2 className="text-lg font-black text-slate-950">
+            Configuración de mayoreo
+          </h2>
+          <p className="mt-1 text-sm font-medium text-slate-500">
+            Define cuándo se activa el mayoreo surtido en carrito y ventas.
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[#fffaf5] px-4 py-3 ring-1 ring-rose-100">
+            <span className="min-w-0">
+              <span className="block text-sm font-black text-slate-800">
+                Activar mayoreo surtido
+              </span>
+              <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                Permite combinar productos marcados como mayoreo surtido.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={form.wholesaleSettings.mixedWholesaleEnabled}
+              onChange={(event) =>
+                updateWholesaleField(
+                  "mixedWholesaleEnabled",
+                  event.target.checked
+                )
+              }
+              className="h-5 w-5 shrink-0 accent-rose-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className={labelClass}>Mínimo general surtido</span>
+            <input
+              value={form.wholesaleSettings.mixedWholesaleMinQuantity}
+              onChange={(event) =>
+                updateWholesaleField(
+                  "mixedWholesaleMinQuantity",
+                  Math.max(Number(event.target.value) || 0, 0)
+                )
+              }
+              className={fieldClass}
+              inputMode="numeric"
+              placeholder="Ej. 6"
+            />
+          </label>
+
+          <label className="space-y-2 lg:col-span-2">
+            <span className={labelClass}>Texto informativo de mayoreo</span>
+            <input
+              value={form.wholesaleSettings.wholesaleInfoText}
+              onChange={(event) =>
+                updateWholesaleField("wholesaleInfoText", event.target.value)
+              }
+              className={fieldClass}
+              placeholder="Ej. Mayoreo disponible desde 6 piezas surtidas."
             />
           </label>
         </div>

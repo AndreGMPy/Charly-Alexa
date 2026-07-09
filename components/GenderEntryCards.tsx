@@ -8,11 +8,11 @@ export default function GenderEntryCards() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-4 sm:mb-6">
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-rose-500 sm:text-xs">
-            Catálogo
+            Colecciones
           </p>
 
           <h2 className="mt-1.5 text-2xl font-black leading-tight text-slate-950 sm:mt-2 sm:text-5xl">
-            Elige una sección
+            Descubre por colección
           </h2>
         </div>
 
@@ -56,7 +56,7 @@ export default function GenderEntryCards() {
                   </p>
 
                   <div className="mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full bg-white px-4 py-2 text-[11px] font-black text-slate-950 shadow-sm transition group-hover:scale-[1.02] sm:mt-7 sm:gap-2 sm:px-7 sm:py-4 sm:text-base">
-                    Entrar
+                    Descubrir
                     <ArrowRight className="h-3.5 w-3.5 sm:h-5 sm:w-5" />
                   </div>
                 </div>

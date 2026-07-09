@@ -4,9 +4,11 @@ export type FirebaseDate = Timestamp | Date | string | null;
 
 export type ProductStatus = "active" | "inactive" | "draft" | "archived";
 
-export type WholesaleMode = "none" | "surtido" | "producto";
+export type WholesaleMode = "none" | "surtido" | "producto" | "mixed" | "product";
 
 export type MainCategoryName = "Niña" | "Niño" | "Unisex";
+
+export type ProductSection = "nina" | "nino" | "unisex";
 
 export type HomeSection = "ofertas" | "novedades" | "temporada" | null;
 
@@ -78,6 +80,7 @@ export type FirebaseProduct = {
   description: string;
   longDescription: string;
   category: MainCategoryName;
+  sections?: ProductSection[];
   subcategory: string;
   price: number;
   basePrice?: number;
@@ -92,12 +95,14 @@ export type FirebaseProduct = {
   isNew: boolean;
   isSeasonal: boolean;
   isActive: boolean;
+  isTestProduct?: boolean;
   isFeatured: boolean;
   featuredOrder: number;
   showOnHome: boolean;
   homeSection: HomeSection;
   status?: ProductStatus;
   wholesaleMode: WholesaleMode;
+  wholesalePrice?: number | null;
   wholesaleMinQuantity: number;
   wholesaleNote?: string;
   createdAt: FirebaseDate;

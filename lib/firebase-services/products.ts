@@ -1,5 +1,6 @@
 import { db, isFirebaseConfigured } from "@/lib/firebase";
-import type { FirebaseProduct } from "@/lib/firebase-types";
+import type { FirebaseProduct, ProductSection } from "@/lib/firebase-types";
+import { categoryToSection, productAppearsInSection } from "@/lib/products";
 import {
   addDoc,
   collection,
@@ -40,6 +41,14 @@ function ensureFirebaseConfigured() {
   return db;
 }
 
+function isProductSection(value: unknown): value is ProductSection {
+  return value === "nina" || value === "nino" || value === "unisex";
+}
+
+function getSections(value: unknown) {
+  return Array.isArray(value) ? Array.from(new Set(value.filter(isProductSection))) : [];
+}
+
 function mapProductDoc(
   snapshot: QueryDocumentSnapshot<DocumentData>
 ): FirebaseProduct {
@@ -52,6 +61,7 @@ function mapProductDoc(
     description: data.description ?? "",
     longDescription: data.longDescription ?? "",
     category: data.category ?? "Unisex",
+    sections: getSections(data.sections),
     subcategory: data.subcategory ?? "",
     price: data.price ?? 0,
     basePrice: data.basePrice,
@@ -66,6 +76,7 @@ function mapProductDoc(
     isNew: Boolean(data.isNew),
     isSeasonal: Boolean(data.isSeasonal),
     isActive: data.isActive ?? true,
+    isTestProduct: Boolean(data.isTestProduct),
     isFeatured: Boolean(data.isFeatured),
     featuredOrder:
       typeof data.featuredOrder === "number" ? data.featuredOrder : 0,
@@ -73,6 +84,8 @@ function mapProductDoc(
     homeSection: data.homeSection ?? null,
     status: data.status,
     wholesaleMode: data.wholesaleMode ?? "none",
+    wholesalePrice:
+      typeof data.wholesalePrice === "number" ? data.wholesalePrice : null,
     wholesaleMinQuantity:
       typeof data.wholesaleMinQuantity === "number"
         ? data.wholesaleMinQuantity
@@ -178,9 +191,14 @@ export async function getProductsBySubcategory(
   const normalizedSubcategory = subcategory.trim().toLowerCase();
 
   return products.filter(
-    (product) =>
-      product.category === category &&
-      product.subcategory.trim().toLowerCase() === normalizedSubcategory
+    (product) => {
+      const section = categoryToSection(category);
+
+      return (
+        Boolean(section && productAppearsInSection(product, section)) &&
+        product.subcategory.trim().toLowerCase() === normalizedSubcategory
+      );
+    }
   );
 }
 
@@ -221,6 +239,7 @@ export async function createProduct(product: ProductCreateInput) {
     showOnHome: product.showOnHome ?? false,
     homeSection: product.homeSection ?? null,
     wholesaleMode: product.wholesaleMode ?? "none",
+    wholesalePrice: product.wholesalePrice ?? null,
     wholesaleMinQuantity: product.wholesaleMinQuantity ?? 0,
     wholesaleNote: product.wholesaleNote ?? "",
     createdAt: serverTimestamp(),

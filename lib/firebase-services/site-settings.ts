@@ -1,5 +1,6 @@
 import { db, isFirebaseConfigured } from "@/lib/firebase";
 import type { FirebaseDate } from "@/lib/firebase-types";
+import type { WholesaleSettings } from "@/lib/wholesale";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 
 export type SiteSettings = {
@@ -13,6 +14,7 @@ export type SiteSettings = {
   hours: string;
   deliveryText: string;
   paymentText: string;
+  wholesaleSettings: WholesaleSettings;
   social: {
     instagram: string;
     facebook: string;

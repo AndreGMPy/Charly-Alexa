@@ -6,12 +6,19 @@ import {
   isDeliveryMethod,
   NATIONAL_DELIVERY_METHOD,
 } from "@/lib/shipping";
+import {
+  calculateWholesaleCart,
+  normalizeWholesaleSettings,
+  type WholesaleProductLike,
+} from "@/lib/wholesale";
 import { FieldValue } from "firebase-admin/firestore";
 
 export const runtime = "nodejs";
 
 const ORDERS_COLLECTION = "orders";
 const PRODUCTS_COLLECTION = "products";
+const SITE_SETTINGS_COLLECTION = "siteSettings";
+const SITE_SETTINGS_DOCUMENT = "main";
 const MERCADO_PAGO_PREFERENCES_URL =
   "https://api.mercadopago.com/checkout/preferences";
 const PAYMENT_NOT_CONFIGURED_MESSAGE =
@@ -40,6 +47,13 @@ type PaymentProduct = {
   quantity: number;
   price: number;
   subtotal: number;
+};
+
+type PaymentCartLine = {
+  productId: string;
+  size: string;
+  quantity: number;
+  product: WholesaleProductLike;
 };
 
 function json(message: string, status: number) {
@@ -134,6 +148,16 @@ async function recalculateOrderForPayment(
       firestore.collection(PRODUCTS_COLLECTION).doc(item.productId).get()
     )
   );
+  const settingsSnapshot = await firestore
+    .collection(SITE_SETTINGS_COLLECTION)
+    .doc(SITE_SETTINGS_DOCUMENT)
+    .get();
+  const wholesaleSettings = normalizeWholesaleSettings(
+    isRecord(settingsSnapshot.data()?.wholesaleSettings)
+      ? settingsSnapshot.data()?.wholesaleSettings
+      : null
+  );
+  const cartLines: PaymentCartLine[] = [];
   const paymentProducts: PaymentProduct[] = [];
   let subtotal = 0;
   let totalItems = 0;
@@ -154,20 +178,44 @@ async function recalculateOrderForPayment(
       throw new Error("invalid-order");
     }
 
-    subtotal += price * item.quantity;
     totalItems += item.quantity;
     hasWholesale =
       hasWholesale ||
       (readString(product.wholesaleMode, 40) !== "" &&
         readString(product.wholesaleMode, 40) !== "none");
 
-    paymentProducts.push({
+    cartLines.push({
       productId: item.productId,
-      title,
       size: item.size,
       quantity: item.quantity,
-      price,
-      subtotal: price * item.quantity,
+      product: {
+        id: item.productId,
+        name: title,
+        price,
+        wholesaleMode: readString(product.wholesaleMode, 40) || "none",
+        wholesalePrice:
+          typeof product.wholesalePrice === "number"
+            ? product.wholesalePrice
+            : null,
+        wholesaleMinQuantity: readNumber(product.wholesaleMinQuantity),
+      },
+    });
+  });
+
+  const pricedLines = calculateWholesaleCart(cartLines, wholesaleSettings);
+
+  pricedLines.forEach((line) => {
+    const item = line.item;
+
+    subtotal += line.subtotal;
+
+    paymentProducts.push({
+      productId: item.productId,
+      title: item.product.name,
+      size: item.size,
+      quantity: item.quantity,
+      price: line.unitPrice,
+      subtotal: line.subtotal,
     });
   });
 

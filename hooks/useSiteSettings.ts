@@ -5,6 +5,10 @@ import {
   type SiteSettings,
 } from "@/lib/firebase-services/site-settings";
 import { storeConfig } from "@/lib/site";
+import {
+  normalizeWholesaleSettings,
+  type WholesaleSettings,
+} from "@/lib/wholesale";
 import { useEffect, useMemo, useState } from "react";
 
 export type PublicSiteSettings = {
@@ -20,6 +24,7 @@ export type PublicSiteSettings = {
   hours: string;
   deliveryText: string;
   paymentText: string;
+  wholesaleSettings: WholesaleSettings;
   social: {
     instagram: string;
     facebook: string;
@@ -83,6 +88,7 @@ function mapSettings(settings: SiteSettings | null): PublicSiteSettings {
     paymentText:
       settings?.paymentText?.trim() ||
       "Pago en línea seguro o acuerdo por WhatsApp.",
+    wholesaleSettings: normalizeWholesaleSettings(settings?.wholesaleSettings),
     social: {
       instagram: settings?.social?.instagram?.trim() || "",
       facebook: settings?.social?.facebook?.trim() || "",

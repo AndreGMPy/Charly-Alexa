@@ -13,6 +13,7 @@ import type {
   FirebaseSubcategory,
   HomeSection,
   MainCategoryName,
+  ProductSection,
   WholesaleMode,
 } from "@/lib/firebase-types";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
@@ -22,7 +23,15 @@ import {
   MAX_PAYMENT_FEE_PERCENT,
   MIN_PAYMENT_FEE_PERCENT,
 } from "@/lib/pricing";
-import { formatPrice } from "@/lib/products";
+import {
+  categoryToSection,
+  formatPrice,
+  getSectionLabels,
+  primaryCategoryFromSections,
+  sectionOptions,
+  subcategories as commonProductTypes,
+} from "@/lib/products";
+import { normalizeWholesaleMode } from "@/lib/wholesale";
 import {
   BadgePercent,
   ChevronDown,
@@ -55,6 +64,7 @@ type ProductFormValues = {
   description: string;
   longDescription: string;
   category: MainCategoryName;
+  sections: ProductSection[];
   subcategory: string;
   basePrice: string;
   paymentFeePercent: string;
@@ -72,11 +82,13 @@ type ProductFormValues = {
   showOnHome: boolean;
   homeSection: HomeSectionValue;
   wholesaleMode: WholesaleMode;
+  wholesalePrice: string;
   wholesaleMinQuantity: string;
   wholesaleNote: string;
 };
 
 type BooleanField = "isOffer" | "isNew" | "isSeasonal" | "isActive";
+type ProductFormStep = "photos" | "data" | "price" | "sale" | "review";
 
 type ProductTemplate = {
   label: string;
@@ -84,8 +96,6 @@ type ProductTemplate = {
   subcategory: string;
   sizes: string[];
 };
-
-const categoryOptions: MainCategoryName[] = ["Niña", "Niño", "Unisex"];
 
 const productTemplates: ProductTemplate[] = [
   {
@@ -123,12 +133,71 @@ const productTemplates: ProductTemplate[] = [
 const defaultSizes = ["1", "2", "4", "6", "8"];
 const quickSizeOptions = ["1", "2", "4", "6", "8", "10", "12", "14", "16"];
 
+function getSubcategorySourceCategories(
+  sections: ProductSection[],
+  fallbackCategory: MainCategoryName
+): MainCategoryName[] {
+  const categories: MainCategoryName[] = [];
+
+  if (sections.includes("nina")) categories.push("Niña");
+  if (sections.includes("nino")) categories.push("Niño");
+
+  if (categories.length > 0) return categories;
+  if (fallbackCategory === "Niña" || fallbackCategory === "Niño") {
+    return [fallbackCategory];
+  }
+
+  return ["Niña", "Niño"];
+}
+
+function getSubcategoryFormOptions(items: FirebaseSubcategory[]) {
+  const uniqueItems = new Map<string, FirebaseSubcategory>();
+
+  for (const item of items) {
+    const key = item.name.trim().toLowerCase();
+    if (!key || uniqueItems.has(key)) continue;
+    uniqueItems.set(key, item);
+  }
+
+  const savedOptions = Array.from(uniqueItems.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, "es-MX")
+  );
+
+  if (savedOptions.length > 0) return savedOptions;
+
+  return commonProductTypes.map((name, index) => ({
+    id: `common-${createSlug(name)}`,
+    name,
+    slug: createSlug(name),
+    parentCategory: (index % 2 === 0 ? "Niña" : "Niño") as MainCategoryName,
+    isActive: true,
+    sortOrder: index + 1,
+    createdAt: "",
+    updatedAt: "",
+  }));
+}
+
+const productFormSteps: Array<{
+  id: ProductFormStep;
+  label: string;
+  helper: string;
+}> = [
+  { id: "photos", label: "Fotos", helper: "Agrega la foto principal del producto." },
+  { id: "data", label: "Datos", helper: "Nombre, sección y textos de la prenda." },
+  { id: "price", label: "Precio", helper: "Precio final, tallas y piezas." },
+  { id: "sale", label: "Venta", helper: "Visibilidad, mayoreo y destacados." },
+  { id: "review", label: "Revisar", helper: "Confirma el resumen antes de guardar." },
+];
+
 function getInitialValues(category: MainCategoryName = "Niña"): ProductFormValues {
+  const initialSection = categoryToSection(category) ?? "nina";
+
   return {
     name: "",
     description: "",
     longDescription: "",
     category,
+    sections: [initialSection],
     subcategory: "",
     basePrice: "",
     paymentFeePercent: String(DEFAULT_PAYMENT_FEE_PERCENT),
@@ -146,6 +215,7 @@ function getInitialValues(category: MainCategoryName = "Niña"): ProductFormValu
     showOnHome: false,
     homeSection: "",
     wholesaleMode: "none",
+    wholesalePrice: "",
     wholesaleMinQuantity: "",
     wholesaleNote: "",
   };
@@ -175,7 +245,7 @@ const booleanFields: { field: BooleanField; label: string; helper: string }[] = 
   },
   {
     field: "isActive",
-    label: "Visible en tienda",
+    label: "Producto activo",
     helper: "Apágalo si aún no quieres venderlo.",
   },
 ];
@@ -256,12 +326,24 @@ function sumStock(stockBySize: StockBySizeFormValue, sizes: string[]) {
 
 function productToFormValues(product: FirebaseProduct): ProductFormValues {
   const sizes = product.sizes.length > 0 ? product.sizes : defaultSizes;
+  const sections = product.sections?.length
+    ? product.sections
+    : [categoryToSection(product.category) ?? "unisex"];
+  const primaryCategory = primaryCategoryFromSections(
+    sections,
+    product.category
+  );
+  const [subcategorySourceCategory = "Niña"] = getSubcategorySourceCategories(
+    sections,
+    primaryCategory
+  );
 
   return {
     name: product.name,
     description: product.description,
     longDescription: product.longDescription,
-    category: product.category,
+    category: subcategorySourceCategory,
+    sections,
     subcategory: product.subcategory,
     basePrice: String(product.basePrice ?? product.price ?? ""),
     paymentFeePercent: String(
@@ -280,7 +362,8 @@ function productToFormValues(product: FirebaseProduct): ProductFormValues {
     featuredOrder: product.featuredOrder ? String(product.featuredOrder) : "",
     showOnHome: product.showOnHome,
     homeSection: product.homeSection ?? "",
-    wholesaleMode: product.wholesaleMode ?? "none",
+    wholesaleMode: normalizeWholesaleMode(product.wholesaleMode),
+    wholesalePrice: product.wholesalePrice ? String(product.wholesalePrice) : "",
     wholesaleMinQuantity: product.wholesaleMinQuantity
       ? String(product.wholesaleMinQuantity)
       : "",
@@ -378,7 +461,7 @@ export default function ProductForm({
   const [subcategories, setSubcategories] = useState<FirebaseSubcategory[]>([]);
   const [isLoadingSubcategories, setIsLoadingSubcategories] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [currentStep, setCurrentStep] = useState<ProductFormStep>("photos");
   const [saveAction, setSaveAction] = useState<"close" | "addAnother">("close");
   const [error, setError] = useState("");
   const [bulkStockQuantity, setBulkStockQuantity] = useState("");
@@ -401,6 +484,11 @@ export default function ProductForm({
   const selectedSubcategoryExists = subcategories.some(
     (item) => item.name === form.subcategory
   );
+  const subcategorySourceCategories = useMemo(
+    () => getSubcategorySourceCategories(form.sections, form.category),
+    [form.category, form.sections]
+  );
+  const subcategorySourceKey = subcategorySourceCategories.join("|");
   const hasBasePriceInput = form.basePrice.trim().length > 0;
   const basePriceValue = Number(form.basePrice);
   const paymentFeePercentValue = Number(form.paymentFeePercent);
@@ -408,6 +496,21 @@ export default function ProductForm({
     hasBasePriceInput ? basePriceValue : 0,
     paymentFeePercentValue
   );
+  const currentStepIndex = productFormSteps.findIndex(
+    (step) => step.id === currentStep
+  );
+  const currentStepMeta =
+    productFormSteps[currentStepIndex] ?? productFormSteps[0];
+  const isFirstStep = currentStepIndex <= 0;
+  const isReviewStep = currentStep === "review";
+  const canShowFinalPrice = hasBasePriceInput && finalCustomerPrice > 0;
+  const finalPriceLabel = canShowFinalPrice
+    ? formatPrice(finalCustomerPrice)
+    : "Se calculará al escribir el precio base";
+  const selectedSectionLabels = getSectionLabels({
+    sections: form.sections,
+    category: form.category,
+  });
 
   const previewProduct = useMemo(() => {
     const product: FirebaseProduct = {
@@ -421,6 +524,7 @@ export default function ProductForm({
         form.description.trim() ||
         "Descripción del producto.",
       category: form.category,
+      sections: form.sections,
       subcategory: form.subcategory.trim() || "Subcategoría",
       price: finalCustomerPrice,
       basePrice: Number(form.basePrice) || undefined,
@@ -444,6 +548,7 @@ export default function ProductForm({
       homeSection: form.showOnHome && form.homeSection ? form.homeSection : null,
       status: form.isActive ? "active" : "inactive",
       wholesaleMode: form.wholesaleMode,
+      wholesalePrice: Number(form.wholesalePrice) || null,
       wholesaleMinQuantity: Number(form.wholesaleMinQuantity) || 0,
       wholesaleNote: form.wholesaleNote,
       createdAt: "",
@@ -474,7 +579,7 @@ export default function ProductForm({
           : getInitialValues(initialCategory)
       );
       setError("");
-      setShowAdvanced(false);
+      setCurrentStep("photos");
       setBulkStockQuantity("");
       saveActionRef.current = "close";
       setSaveAction("close");
@@ -487,21 +592,28 @@ export default function ProductForm({
     async function loadSubcategories() {
       try {
         setIsLoadingSubcategories(true);
-        const items = await getSubcategoriesByCategory(form.category);
+        const sourceCategories = subcategorySourceKey
+          .split("|")
+          .filter(Boolean) as MainCategoryName[];
+        const categoryItems = await Promise.all(
+          sourceCategories.map((category) => getSubcategoriesByCategory(category))
+        );
+        const items = categoryItems.flat();
         const selectableItems = items.filter(
           (item) => item.isActive || item.name === form.subcategory
         );
+        const formOptions = getSubcategoryFormOptions(selectableItems);
 
         if (!isCurrent) return;
 
-        setSubcategories(selectableItems);
+        setSubcategories(formOptions);
         setForm((current) => {
-          if (current.subcategory || selectableItems.length === 0) return current;
-          return { ...current, subcategory: selectableItems[0].name };
+          if (current.subcategory || formOptions.length === 0) return current;
+          return { ...current, subcategory: formOptions[0].name };
         });
       } catch {
         if (isCurrent) {
-          setSubcategories([]);
+          setSubcategories(getSubcategoryFormOptions([]));
         }
       } finally {
         if (isCurrent) {
@@ -515,7 +627,7 @@ export default function ProductForm({
     return () => {
       isCurrent = false;
     };
-  }, [form.category, form.subcategory]);
+  }, [form.subcategory, subcategorySourceKey]);
 
   function updateField<Field extends keyof ProductFormValues>(
     field: Field,
@@ -524,12 +636,26 @@ export default function ProductForm({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function updateCategory(value: MainCategoryName) {
-    setForm((current) => ({
-      ...current,
-      category: value,
-      subcategory: "",
-    }));
+  function toggleSection(section: ProductSection) {
+    setForm((current) => {
+      const hasSection = current.sections.includes(section);
+      const nextSections = hasSection
+        ? current.sections.filter((item) => item !== section)
+        : [...current.sections, section];
+      const safeSections = nextSections.length > 0 ? nextSections : [section];
+      const nextCategory = primaryCategoryFromSections(
+        safeSections,
+        current.category
+      );
+
+      return {
+        ...current,
+        sections: safeSections,
+        category: nextCategory,
+        subcategory:
+          nextCategory === current.category ? current.subcategory : "",
+      };
+    });
   }
 
   function updateSizes(value: string) {
@@ -610,9 +736,12 @@ export default function ProductForm({
   }
 
   function applyTemplate(template: ProductTemplate) {
+    const templateSection = categoryToSection(template.category) ?? "unisex";
+
     setForm((current) => ({
       ...current,
       category: template.category,
+      sections: [templateSection],
       subcategory: template.subcategory,
       sizes: template.sizes.join(", "),
       stockBySize: createEmptyStockBySize(template.sizes),
@@ -624,14 +753,45 @@ export default function ProductForm({
     setSaveAction(action);
   }
 
+  function goToStep(step: ProductFormStep) {
+    setCurrentStep(step);
+    setError("");
+  }
+
+  function goToPreviousStep() {
+    const previousStep = productFormSteps[Math.max(currentStepIndex - 1, 0)];
+    goToStep(previousStep.id);
+  }
+
+  function goToNextStep() {
+    const nextStep =
+      productFormSteps[
+        Math.min(currentStepIndex + 1, productFormSteps.length - 1)
+      ];
+    goToStep(nextStep.id);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!isReviewStep) {
+      goToNextStep();
+      return;
+    }
+
     setError("");
     const requestedSaveAction = saveActionRef.current;
 
     const basePrice = Number(form.basePrice);
     const paymentFeePercent = Number(form.paymentFeePercent);
     const price = calculateFinalCustomerPrice(basePrice, paymentFeePercent);
+    const sections =
+      form.sections.length > 0 ? form.sections : [categoryToSection(form.category) ?? "unisex"];
+    const primaryCategory = primaryCategoryFromSections(sections, form.category);
+    const wholesaleMode = normalizeWholesaleMode(form.wholesaleMode);
+    const wholesalePrice = form.wholesalePrice.trim()
+      ? Number(form.wholesalePrice)
+      : null;
     const wholesaleMinQuantity = form.wholesaleMinQuantity.trim()
       ? Number(form.wholesaleMinQuantity)
       : 0;
@@ -647,6 +807,11 @@ export default function ProductForm({
 
     if (!subcategory) {
       setError("Elige una subcategoría o crea una nueva en Categorías.");
+      return;
+    }
+
+    if (sections.length === 0) {
+      setError("Elige al menos una sección donde aparecerá.");
       return;
     }
 
@@ -685,10 +850,24 @@ export default function ProductForm({
     }
 
     if (
-      form.wholesaleMode !== "none" &&
+      wholesaleMode !== "none" &&
+      wholesalePrice !== null &&
+      (!Number.isFinite(wholesalePrice) || wholesalePrice <= 0)
+    ) {
+      setError("Agrega un precio mayoreo válido o deja el campo vacío.");
+      return;
+    }
+
+    if (wholesaleMode !== "none" && wholesalePrice !== null && wholesalePrice > price) {
+      setError("El precio mayoreo debe ser menor o igual al precio normal.");
+      return;
+    }
+
+    if (
+      wholesaleMode === "product" &&
       (!Number.isFinite(wholesaleMinQuantity) || wholesaleMinQuantity < 2)
     ) {
-      setError("Para mayoreo agrega un mínimo de al menos 2 piezas.");
+      setError("Para mayoreo por producto agrega un mínimo de al menos 2 piezas.");
       return;
     }
 
@@ -701,7 +880,8 @@ export default function ProductForm({
       name: form.name.trim(),
       description: form.description.trim(),
       longDescription: form.longDescription.trim(),
-      category: form.category,
+      category: primaryCategory,
+      sections,
       subcategory,
       price,
       basePrice,
@@ -724,11 +904,12 @@ export default function ProductForm({
       showOnHome: form.showOnHome,
       homeSection: form.showOnHome && form.homeSection ? form.homeSection : null,
       status: form.isActive ? "active" : "inactive",
-      wholesaleMode: form.wholesaleMode,
+      wholesaleMode,
+      wholesalePrice: wholesaleMode === "none" ? null : wholesalePrice,
       wholesaleMinQuantity:
-        form.wholesaleMode === "none" ? 0 : wholesaleMinQuantity,
+        wholesaleMode === "product" ? wholesaleMinQuantity : 0,
       wholesaleNote:
-        form.wholesaleMode === "none" ? "" : form.wholesaleNote.trim(),
+        wholesaleMode === "none" ? "" : form.wholesaleNote.trim(),
     };
 
     try {
@@ -773,10 +954,10 @@ export default function ProductForm({
             {isEditing ? "Editar" : "Nuevo producto"}
           </p>
           <h2 className="mt-1 break-words text-lg font-black text-slate-950 sm:text-2xl">
-            {isEditing ? "Editar producto" : `Agregar producto de ${form.category}`}
+            {isEditing ? "Editar producto" : "Agregar producto"}
           </h2>
           <p className="mt-2 hidden max-w-xl text-sm font-semibold leading-6 text-slate-600 sm:block">
-            Producto rápido muestra solo lo necesario para subir una prenda sin ver opciones extra.
+            Completa cada paso y guarda hasta revisar el producto.
           </p>
         </div>
 
@@ -792,42 +973,56 @@ export default function ProductForm({
         )}
       </div>
 
-      <div className="mb-3 flex min-w-0 flex-col gap-2 rounded-xl bg-rose-50/60 p-2.5 ring-1 ring-rose-100 sm:mb-5 sm:flex-row sm:items-center sm:justify-between sm:rounded-2xl sm:p-4">
+      <div className="mb-3 min-w-0 rounded-xl bg-[#fffaf5] p-2.5 ring-1 ring-rose-100 sm:mb-5 sm:rounded-2xl sm:p-4">
         <div className="flex min-w-0 items-start gap-2 sm:gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-rose-500 shadow-sm ring-1 ring-rose-100 sm:h-11 sm:w-11 sm:rounded-2xl">
             <WandSparkles size={18} />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-black text-slate-950">Producto rápido</p>
-          <p className="mt-1 hidden text-xs font-semibold leading-5 text-slate-600 sm:block">
-              Foto, nombre, precio, tallas y piezas. Lo demás queda guardado en opciones avanzadas.
+            <p className="text-sm font-black text-slate-950">
+              {currentStepMeta.label}
+            </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+              {currentStepMeta.helper}
             </p>
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((value) => !value)}
-          className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-rose-100 transition hover:bg-rose-100 sm:min-h-11 sm:w-auto sm:px-4 sm:py-2.5 sm:text-sm"
-        >
-          <ChevronDown
-            size={16}
-            className={`transition ${showAdvanced ? "rotate-180" : ""}`}
-          />
-          <span className="sm:hidden">{showAdvanced ? "Ocultar" : "Opciones"}</span>
-          <span className="hidden sm:inline">
-            {showAdvanced ? "Ocultar opciones avanzadas" : "Mostrar opciones avanzadas"}
-          </span>
-        </button>
+        <div className="mt-3 grid min-w-0 grid-cols-5 gap-1.5 sm:gap-2">
+          {productFormSteps.map((step, index) => {
+            const isActive = step.id === currentStep;
+            const isDone = index < currentStepIndex;
+
+            return (
+              <button
+                key={step.id}
+                type="button"
+                onClick={() => goToStep(step.id)}
+                className={`min-w-0 rounded-xl px-1.5 py-2 text-center text-[11px] font-black transition focus:outline-none focus:ring-4 focus:ring-rose-100 sm:flex sm:min-h-11 sm:items-center sm:justify-center sm:gap-2 sm:rounded-full sm:px-3 sm:text-xs ${
+                  isActive
+                    ? "bg-slate-950 text-white shadow-sm"
+                    : isDone
+                      ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
+                      : "bg-white text-slate-500 ring-1 ring-rose-100 hover:bg-rose-50 hover:text-slate-800"
+                }`}
+              >
+                <span className="mx-auto flex h-5 w-5 items-center justify-center rounded-full bg-white/20 sm:mx-0">
+                  {index + 1}
+                </span>
+                <span className="hidden truncate sm:inline">{step.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div
-        className={`grid min-w-0 gap-4 sm:gap-6 ${
-          showAdvanced ? "xl:grid-cols-[minmax(0,1fr)_320px]" : ""
-        }`}
-      >
+      <div className="grid min-w-0 gap-4 sm:gap-6">
         <div className="flex min-w-0 flex-col gap-4 sm:gap-7">
-          <section className="order-2 border-t border-rose-100 pt-4 sm:pt-5">
+          <section
+            className={`border-t border-rose-100 pt-4 sm:pt-5 ${
+              currentStep === "data" ? "" : "hidden"
+            }`}
+          >
             <SectionHeader
               eyebrow="Información básica"
               title="Datos del producto"
@@ -835,12 +1030,12 @@ export default function ProductForm({
               icon={<Shirt size={20} />}
             />
 
-            {showAdvanced && (
+            <div className="mb-3 sm:mb-5">
             <details className="group mb-3 min-w-0 overflow-hidden rounded-xl border border-rose-100 bg-[#fffaf5] px-3 py-2.5 sm:mb-5 sm:rounded-2xl sm:px-4 sm:py-3">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
                 <span className="min-w-0">
                   <span className="block break-words text-sm font-black text-slate-800">
-                    Producto rápido / plantillas rápidas
+                    Plantillas rápidas
                   </span>
                   <span className="mt-1 hidden text-xs font-semibold leading-5 text-slate-600 sm:block">
                     Llena categoría, subcategoría y tallas disponibles.
@@ -859,7 +1054,7 @@ export default function ProductForm({
                     Plantillas rápidas
                   </p>
                   <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
-                    Elige una para llenar categoría, subcategoría y tallas disponibles.
+                    Elige una para llenar secciones, tipo de prenda y tallas.
                   </p>
                 </div>
               </div>
@@ -880,7 +1075,7 @@ export default function ProductForm({
               </div>
             </div>
             </details>
-            )}
+            </div>
 
             <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-2">
               <label className="space-y-2">
@@ -894,31 +1089,41 @@ export default function ProductForm({
                 <HelpText>Así aparecerá en la tienda y en la vista previa.</HelpText>
               </label>
 
-              <label className="space-y-2">
-                <span className={labelClass}>Categoría</span>
-                <select
-                  value={form.category}
-                  onChange={(event) =>
-                    updateCategory(event.target.value as FirebaseProduct["category"])
-                  }
-                  className={fieldClass}
-                >
-                  {categoryOptions.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="space-y-2">
+                <span className={labelClass}>Secciones donde aparecerá</span>
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  {sectionOptions.map((section) => {
+                    const isSelected = form.sections.includes(section.value);
+
+                    return (
+                      <button
+                        key={section.value}
+                        type="button"
+                        onClick={() => toggleSection(section.value)}
+                        className={`min-h-9 rounded-full px-3 py-2 text-xs font-black transition focus:outline-none focus:ring-4 focus:ring-rose-100 sm:min-h-10 sm:px-4 ${
+                          isSelected
+                            ? "bg-slate-950 text-white shadow-sm"
+                            : "bg-white text-slate-700 ring-1 ring-rose-100 hover:bg-rose-50"
+                        }`}
+                      >
+                        {section.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <HelpText>
+                  Puede aparecer en una o varias secciones de la boutique.
+                </HelpText>
+              </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className={labelClass}>Subcategoría</span>
+                  <span className={labelClass}>Tipo de prenda</span>
                   <Link
                     href="/admin/categorias"
                     className="text-xs font-black text-rose-500 transition hover:text-rose-600"
                   >
-                    Agregar subcategoría
+                    Agregar tipo
                   </Link>
                 </div>
 
@@ -953,58 +1158,59 @@ export default function ProductForm({
                 )}
 
                 <HelpText>
-                  Ayuda a que el producto quede bien acomodado en la tienda.
+                  Ej. Vestidos, Conjuntos, Chamarras, Playeras o Accesorios.
                 </HelpText>
               </div>
 
-              {showAdvanced && (
-                <div className="space-y-3 lg:col-span-2">
-                  <CollapsibleBlock title="Etiquetas" description="Colores visibles para la tienda.">
-                    <label className="space-y-2">
-                      <span className={labelClass}>Colores disponibles</span>
-                      <input
-                        value={form.colors}
-                        onChange={(event) => updateField("colors", event.target.value)}
-                        className={fieldClass}
-                        placeholder="Ej. Rosa, Blanco"
-                      />
-                      <HelpText>Escribe los colores separados por coma.</HelpText>
-                    </label>
-                  </CollapsibleBlock>
+              <label className="space-y-2">
+                <span className={labelClass}>Colores disponibles</span>
+                <input
+                  value={form.colors}
+                  onChange={(event) => updateField("colors", event.target.value)}
+                  className={fieldClass}
+                  placeholder="Ej. Rosa, blanco"
+                />
+                <HelpText>Escribe los colores separados por coma.</HelpText>
+              </label>
 
-                  <CollapsibleBlock title="Descripción larga" description="Textos para el detalle del producto.">
-                    <div className="grid gap-3 sm:gap-4">
-                      <label className="space-y-2">
-                        <span className={labelClass}>Descripción corta</span>
-                        <textarea
-                          value={form.description}
-                          onChange={(event) =>
-                            updateField("description", event.target.value)
-                          }
-                          className={`${fieldClass} min-h-20 resize-none sm:min-h-24`}
-                          placeholder="Ej. Prenda cómoda para uso diario."
-                        />
-                      </label>
+              <label className="space-y-2 lg:col-span-2">
+                <span className={labelClass}>Descripción corta</span>
+                <textarea
+                  value={form.description}
+                  onChange={(event) =>
+                    updateField("description", event.target.value)
+                  }
+                  className={`${fieldClass} min-h-20 resize-none sm:min-h-24`}
+                  placeholder="Ej. Prenda cómoda para uso diario."
+                />
+              </label>
 
-                      <label className="space-y-2">
-                        <span className={labelClass}>Descripción para detalle</span>
-                        <textarea
-                          value={form.longDescription}
-                          onChange={(event) =>
-                            updateField("longDescription", event.target.value)
-                          }
-                          className={`${fieldClass} min-h-20 resize-none sm:min-h-24`}
-                          placeholder="Ej. Cuenta cuándo se usa, cómo queda y qué la hace especial."
-                        />
-                      </label>
-                    </div>
-                  </CollapsibleBlock>
-                </div>
-              )}
+              <div className="space-y-3 lg:col-span-2">
+                <CollapsibleBlock
+                  title="Descripción larga"
+                  description="Texto opcional para el detalle del producto."
+                >
+                  <label className="space-y-2">
+                    <span className={labelClass}>Descripción para detalle</span>
+                    <textarea
+                      value={form.longDescription}
+                      onChange={(event) =>
+                        updateField("longDescription", event.target.value)
+                      }
+                      className={`${fieldClass} min-h-20 resize-none sm:min-h-24`}
+                      placeholder="Ej. Cuenta cuándo se usa, cómo queda y qué la hace especial."
+                    />
+                  </label>
+                </CollapsibleBlock>
+              </div>
             </div>
           </section>
 
-          <section className="order-3 border-t border-rose-100 pt-4 sm:pt-5">
+          <section
+            className={`border-t border-rose-100 pt-4 sm:pt-5 ${
+              currentStep === "price" ? "" : "hidden"
+            }`}
+          >
             <SectionHeader
               eyebrow="Precio y stock"
               title="Precio y stock"
@@ -1047,17 +1253,19 @@ export default function ProductForm({
 
               <div className="space-y-2">
                 <span className={labelClass}>Precio final al cliente</span>
-                <div className="flex min-h-10 items-center rounded-xl border border-emerald-100 bg-emerald-50 px-3 text-base font-black text-emerald-800 sm:min-h-12 sm:rounded-2xl sm:px-4 sm:text-lg">
-                  {finalCustomerPrice > 0
-                    ? formatPrice(finalCustomerPrice)
-                    : "$0"}
+                <div
+                  className={`flex min-h-10 items-center rounded-xl border px-3 text-sm font-black sm:min-h-12 sm:rounded-2xl sm:px-4 ${
+                    canShowFinalPrice
+                      ? "border-emerald-100 bg-emerald-50 text-base text-emerald-800 sm:text-lg"
+                      : "border-slate-100 bg-slate-50 text-slate-400"
+                  }`}
+                >
+                  {finalPriceLabel}
                 </div>
                 <p className="rounded-xl bg-white px-3 py-2 text-xs font-black leading-5 text-slate-700 ring-1 ring-rose-100 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm">
                   El cliente verá este precio en la tienda:{" "}
                   <span className="text-slate-950">
-                    {finalCustomerPrice > 0
-                      ? formatPrice(finalCustomerPrice)
-                      : "$0"}
+                    {canShowFinalPrice ? finalPriceLabel : "pendiente"}
                   </span>
                 </p>
               </div>
@@ -1170,7 +1378,11 @@ export default function ProductForm({
             </div>
           </section>
 
-          <section className="order-1 pt-1 sm:border-t sm:border-rose-100 sm:pt-5">
+          <section
+            className={`pt-1 sm:border-t sm:border-rose-100 sm:pt-5 ${
+              currentStep === "photos" ? "" : "hidden"
+            }`}
+          >
             <SectionHeader
               eyebrow="Imágenes"
               title="Fotos del producto"
@@ -1189,13 +1401,12 @@ export default function ProductForm({
                 updateProductPhotos(url ? [url, ...remainingPhotos] : remainingPhotos);
               }}
               storagePath={`${imageStorageFolder}/principal`}
-              helperText="Foto visible en la tienda."
+              helperText="Foto principal de la prenda."
               previewClassName="h-48 sm:h-56"
               previewFit="contain"
             />
             <HelpText>La primera foto será la principal.</HelpText>
 
-            {showAdvanced && (
               <div className="mt-3 space-y-3 sm:mt-4">
                 <CollapsibleBlock
                   title="Galería de imágenes"
@@ -1240,10 +1451,9 @@ export default function ProductForm({
                   </div>
                 </CollapsibleBlock>
               </div>
-            )}
           </section>
 
-          {showAdvanced && (
+          {currentStep === "sale" && (
             <>
               <section className="order-4 border-t border-rose-100 pt-4 sm:pt-5">
                 <SectionHeader
@@ -1346,9 +1556,9 @@ export default function ProductForm({
 
             <CollapsibleBlock
               title="Configurar mayoreo"
-              description="Mínimo de piezas y nota que verá el cliente."
+              description="Precio especial y regla de mínimo."
             >
-              <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-3">
+              <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-2">
                 <label className="space-y-2">
                   <span className={labelClass}>Forma de mayoreo</span>
                   <select
@@ -1362,13 +1572,29 @@ export default function ProductForm({
                     className={fieldClass}
                   >
                     <option value="none">No aplica</option>
-                    <option value="surtido">Cuenta con otros productos</option>
-                    <option value="producto">Solo de este producto</option>
+                    <option value="mixed">Mayoreo surtido</option>
+                    <option value="product">Mayoreo por producto</option>
                   </select>
                 </label>
 
+                {form.wholesaleMode !== "none" && (
+                  <label className="space-y-2">
+                    <span className={labelClass}>Precio mayoreo</span>
+                    <input
+                      value={form.wholesalePrice}
+                      onChange={(event) =>
+                        updateField("wholesalePrice", event.target.value)
+                      }
+                      className={fieldClass}
+                      inputMode="decimal"
+                      placeholder="Ej. 250"
+                    />
+                    <HelpText>Debe ser menor o igual al precio normal.</HelpText>
+                  </label>
+                )}
+
                 <label className="space-y-2">
-                  <span className={labelClass}>Piezas mínimas</span>
+                  <span className={labelClass}>Mínimo por producto</span>
                   <input
                     value={form.wholesaleMinQuantity}
                     onChange={(event) =>
@@ -1377,11 +1603,12 @@ export default function ProductForm({
                     className={fieldClass}
                     inputMode="numeric"
                     placeholder="Ej. 6"
-                    disabled={form.wholesaleMode === "none"}
+                    disabled={form.wholesaleMode !== "product"}
                   />
+                  <HelpText>Solo aplica para mayoreo por producto.</HelpText>
                 </label>
 
-                <label className="space-y-2">
+                <label className="space-y-2 lg:col-span-2">
                   <span className={labelClass}>Mensaje para el cliente</span>
                   <input
                     value={form.wholesaleNote}
@@ -1397,9 +1624,9 @@ export default function ProductForm({
 
               {form.wholesaleMode !== "none" && (
                 <div className="mt-3 rounded-xl bg-white px-3 py-2.5 text-xs font-bold leading-5 text-slate-600 ring-1 ring-rose-100 sm:mt-4 sm:rounded-2xl sm:px-4 sm:py-3">
-                  {form.wholesaleMode === "surtido"
-                    ? "Cuenta con otros productos: el mínimo se completa combinando varios productos marcados para mayoreo."
-                    : "Solo de este producto: el mínimo se completa con esta prenda, aunque cambie la talla."}
+                  {form.wholesaleMode === "mixed"
+                    ? "Mayoreo surtido: el mínimo se toma de la configuración general de tienda y permite combinar prendas elegibles."
+                    : "Mayoreo por producto: el mínimo se completa con esta prenda, aunque cambie la talla."}
                 </div>
               )}
             </CollapsibleBlock>
@@ -1441,9 +1668,80 @@ export default function ProductForm({
               </section>
             </>
           )}
+
+          {currentStep === "review" && (
+            <section className="border-t border-rose-100 pt-4 sm:pt-5">
+              <SectionHeader
+                eyebrow="Resumen"
+                title="Revisar producto"
+                description="Confirma la información principal antes de guardar."
+                icon={<Sparkles size={20} />}
+              />
+
+              <div className="grid min-w-0 gap-3 rounded-xl bg-[#fffaf5] p-2.5 ring-1 ring-rose-100 sm:rounded-2xl sm:p-4 lg:grid-cols-[140px_minmax(0,1fr)]">
+                <div className="min-h-32 overflow-hidden rounded-xl bg-white ring-1 ring-rose-100 sm:rounded-2xl">
+                  <ProductVisual
+                    product={previewProduct}
+                    compact
+                    showName={false}
+                    showBadges={false}
+                    className="h-32"
+                  />
+                </div>
+
+                <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Nombre
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {form.name.trim() || "Sin nombre"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Secciones
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {selectedSectionLabels || form.category} ·{" "}
+                      {form.subcategory || "Sin tipo"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Precio final
+                    </p>
+                    <p
+                      className={`mt-1 text-sm font-black ${
+                        canShowFinalPrice ? "text-slate-950" : "text-slate-400"
+                      }`}
+                    >
+                      {canShowFinalPrice ? finalPriceLabel : "Pendiente"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Estado
+                    </p>
+                    <p className="mt-1 text-sm font-black text-slate-950">
+                      {form.isActive ? "Visible" : "Pausado"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100 sm:col-span-2">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Tallas y piezas
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      Tallas: {sizes.length > 0 ? sizes.join(", ") : "sin tallas"} · Piezas: {totalStock}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
 
-        {showAdvanced && (
+        {currentStep === "review" && (
         <aside className="min-w-0 space-y-4 xl:sticky xl:top-6 xl:self-start">
           <CollapsibleBlock
             title="Vista previa"
@@ -1489,7 +1787,8 @@ export default function ProductForm({
                 </div>
 
                 <p className="text-[11px] font-black uppercase text-slate-600">
-                  {previewProduct.category} · {previewProduct.subcategory}
+                  {selectedSectionLabels || previewProduct.category} ·{" "}
+                  {previewProduct.subcategory}
                 </p>
                 <h3 className="mt-1.5 line-clamp-2 min-h-[2.4rem] text-base font-black leading-tight text-slate-950">
                   {previewProduct.name}
@@ -1498,8 +1797,12 @@ export default function ProductForm({
                   <p className="text-[11px] font-bold text-slate-600">
                     El cliente verá
                   </p>
-                  <p className="text-2xl font-black text-slate-950">
-                    {formatPrice(previewProduct.price)}
+                  <p
+                    className={`text-2xl font-black ${
+                      canShowFinalPrice ? "text-slate-950" : "text-slate-400"
+                    }`}
+                  >
+                    {canShowFinalPrice ? finalPriceLabel : "Pendiente"}
                   </p>
                 </div>
               </div>
@@ -1517,74 +1820,116 @@ export default function ProductForm({
       )}
 
       <div className="mt-5 hidden flex-col-reverse gap-2 pb-1 sm:flex sm:flex-row sm:justify-end">
-        {onCancel && (
+        {isFirstStep ? (
+          onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-100 px-6 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-200 sm:w-auto"
+            >
+              <X size={17} />
+              Cancelar
+            </button>
+          )
+        ) : (
           <button
             type="button"
-            onClick={onCancel}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-100 px-6 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-200 sm:w-auto"
+            onClick={goToPreviousStep}
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-slate-100 px-6 py-3 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-200 sm:w-auto"
           >
-            <X size={17} />
-            Cancelar
+            Atrás
           </button>
         )}
 
-        {!isEditing && (
+        {!isReviewStep ? (
           <button
-            type="submit"
-            onClick={() => setNextSaveAction("addAnother")}
-            disabled={isSaving}
-            className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300 sm:w-auto"
+            type="button"
+            onClick={goToNextStep}
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 sm:w-auto"
           >
-            <Save size={17} />
-            {isSaving && saveAction === "addAnother"
-              ? "Guardando"
-              : "Guardar y agregar otro"}
+            Siguiente
           </button>
-        )}
+        ) : (
+          <>
+            {!isEditing && (
+              <button
+                type="submit"
+                onClick={() => setNextSaveAction("addAnother")}
+                disabled={isSaving}
+                className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300 sm:w-auto"
+              >
+                <Save size={17} />
+                {isSaving && saveAction === "addAnother"
+                  ? "Guardando"
+                  : "Guardar y agregar otro"}
+              </button>
+            )}
 
-        <button
-          type="submit"
-          onClick={() => setNextSaveAction("close")}
-          disabled={isSaving}
-          className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto"
-        >
-          <Save size={17} />
-          {isSaving
-            ? "Guardando"
-            : isEditing
-              ? "Guardar cambios"
-              : "Guardar producto"}
-        </button>
+            <button
+              type="submit"
+              onClick={() => setNextSaveAction("close")}
+              disabled={isSaving}
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto"
+            >
+              <Save size={17} />
+              {isSaving
+                ? "Guardando"
+                : isEditing
+                  ? "Guardar cambios"
+                  : "Guardar producto"}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-rose-100 bg-white/95 px-3 py-2 shadow-[0_-10px_24px_rgba(15,23,42,0.08)] backdrop-blur sm:hidden">
         <div className="mx-auto grid max-w-lg grid-cols-[0.9fr_1.1fr] gap-2 pb-[env(safe-area-inset-bottom)]">
-          {onCancel ? (
+          {isFirstStep ? (
+            onCancel ? (
+              <button
+                type="button"
+                onClick={onCancel}
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+              >
+                <X size={15} />
+                Cancelar
+              </button>
+            ) : (
+              <span />
+            )
+          ) : (
             <button
               type="button"
-              onClick={onCancel}
-              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
+              onClick={goToPreviousStep}
+              className="inline-flex min-h-10 items-center justify-center rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700"
             >
-              <X size={15} />
-              Cancelar
+              Atrás
             </button>
-          ) : (
-            <span />
           )}
 
-          <button
-            type="submit"
-            onClick={() => setNextSaveAction("close")}
-            disabled={isSaving}
-            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            <Save size={15} />
-            {isSaving
-              ? "Guardando"
-              : isEditing
-                ? "Guardar cambios"
-                : "Guardar producto"}
-          </button>
+          {!isReviewStep ? (
+            <button
+              type="button"
+              onClick={goToNextStep}
+              className="inline-flex min-h-10 items-center justify-center rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm"
+            >
+              Siguiente
+            </button>
+          ) : (
+            <button
+              type="submit"
+              onClick={() => setNextSaveAction("close")}
+              disabled={isSaving}
+              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <Save size={15} />
+              {isSaving
+                ? "Guardando"
+                : isEditing
+                  ? "Guardar cambios"
+                  : "Guardar producto"}
+            </button>
+          )}
         </div>
       </div>
     </form>

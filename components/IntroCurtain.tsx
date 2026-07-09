@@ -30,7 +30,7 @@ export default function IntroCurtain() {
 
       timer = window.setTimeout(() => {
         setShowIntro(false);
-      }, 1800);
+      }, 1600);
     });
 
     return () => {
@@ -110,7 +110,7 @@ export default function IntroCurtain() {
                 },
               }}
             >
-              Tienda online infantil
+              Boutique infantil
             </motion.p>
 
             <motion.h1
@@ -140,47 +140,24 @@ export default function IntroCurtain() {
                 },
               }}
             >
-              Ropa infantil para niñas y niños en tallas 1 a 16.
+              Prendas para niñas y niños, elegidas con cuidado para cada día.
             </motion.p>
 
-            <motion.div
-              className="mt-7 h-1.5 w-44 overflow-hidden rounded-full bg-rose-100"
+            <motion.button
+              type="button"
+              onClick={closeIntro}
+              className="mt-6 rounded-full bg-slate-950 px-5 py-2.5 text-xs font-black text-white shadow-lg transition hover:bg-slate-800"
               initial={{ opacity: 0 }}
               animate={{
                 opacity: 1,
                 transition: {
-                  delay: 0.55,
+                  delay: 0.58,
                   duration: 0.3,
                 },
               }}
             >
-              <motion.div
-                className="h-full rounded-full bg-rose-500"
-                initial={{ width: "0%" }}
-                animate={{
-                  width: "100%",
-                  transition: {
-                    delay: 0.65,
-                    duration: 0.9,
-                    ease: "easeInOut",
-                  },
-                }}
-              />
-            </motion.div>
-
-            <motion.p
-              className="mt-4 text-xs font-bold text-slate-400"
-              initial={{ opacity: 0 }}
-              animate={{
-                opacity: 1,
-                transition: {
-                  delay: 0.85,
-                  duration: 0.3,
-                },
-              }}
-            >
-              Toca para continuar
-            </motion.p>
+              Descubrir colección
+            </motion.button>
           </motion.div>
         </motion.div>
       )}

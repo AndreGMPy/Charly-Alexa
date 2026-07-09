@@ -61,3 +61,18 @@ export async function saveHomepageSettings(settings: HomepageSettingsInput) {
     { merge: true }
   );
 }
+
+export async function saveHomepageFeaturedProductIds(
+  featuredProductIds: string[]
+) {
+  const firestore = ensureFirebaseConfigured();
+
+  await setDoc(
+    doc(firestore, HOMEPAGE_COLLECTION, HOMEPAGE_DOCUMENT),
+    {
+      featuredProductIds,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+}

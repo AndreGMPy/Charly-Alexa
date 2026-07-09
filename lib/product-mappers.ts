@@ -1,5 +1,9 @@
 import type { FirebaseProduct } from "@/lib/firebase-types";
-import type { Product, ProductBadge } from "@/lib/products";
+import {
+  normalizeProductSections,
+  type Product,
+  type ProductBadge,
+} from "@/lib/products";
 
 const gradientsByCategory: Record<
   FirebaseProduct["category"],
@@ -55,6 +59,7 @@ export function mapFirebaseProductToProduct(
     slug: product.slug,
     name: product.name,
     category: product.category,
+    sections: normalizeProductSections(product),
     subcategory: product.subcategory || "General",
     price: product.price,
     sizes: product.sizes.length > 0 ? product.sizes : ["Unitalla"],
@@ -74,9 +79,11 @@ export function mapFirebaseProductToProduct(
     isNew: product.isNew,
     isOffer: product.isOffer,
     isSeasonal: product.isSeasonal,
+    isTestProduct: product.isTestProduct,
     isTrending: product.homeSection === "temporada",
     isLastUnits: product.stock > 0 && product.stock <= 4,
     wholesaleMode: product.wholesaleMode ?? "none",
+    wholesalePrice: product.wholesalePrice ?? null,
     wholesaleMinQuantity: product.wholesaleMinQuantity ?? 0,
     wholesaleNote: product.wholesaleNote ?? "",
   };

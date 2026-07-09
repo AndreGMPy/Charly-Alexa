@@ -26,6 +26,7 @@ import {
   NATIONAL_DELIVERY_METHOD,
 } from "@/lib/shipping";
 import {
+  calculateWholesaleCart,
   getWholesaleLabel,
   isWholesaleProduct,
   validateWholesaleCart,
@@ -125,7 +126,6 @@ export default function CartDrawer() {
     removeItem,
     clearCart,
     totalItems,
-    totalPrice,
   } = useCartStore();
 
   const [step, setStep] = useState<CheckoutStep>(1);
@@ -136,9 +136,26 @@ export default function CartDrawer() {
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const submitLockRef = useRef(false);
 
-  const subtotal = totalPrice();
+  const wholesaleLines = useMemo(
+    () => calculateWholesaleCart(items, settings.wholesaleSettings),
+    [items, settings.wholesaleSettings]
+  );
+  const wholesaleLineById = useMemo(
+    () =>
+      new Map(
+        wholesaleLines.map((line) => [
+          line.item.cartItemId || line.item.id,
+          line,
+        ])
+      ),
+    [wholesaleLines]
+  );
+  const subtotal = wholesaleLines.reduce((sum, line) => sum + line.subtotal, 0);
   const totalPieces = totalItems();
-  const wholesaleValidation = validateWholesaleCart(items);
+  const wholesaleValidation = validateWholesaleCart(
+    items,
+    settings.wholesaleSettings
+  );
   const hasWholesaleItems = items.some((item) => isWholesaleProduct(item.product));
   const shipping = calculateOrderShipping({
     method: customerForm.deliveryMethod,
@@ -239,7 +256,9 @@ export default function CartDrawer() {
 
   function buildOrderItems(): FirebaseOrderItem[] {
     return items.map((item) => {
-      const subtotal = item.product.price * item.quantity;
+      const pricedLine = wholesaleLineById.get(item.cartItemId || item.id);
+      const unitPrice = pricedLine?.unitPrice ?? item.product.price;
+      const subtotal = unitPrice * item.quantity;
       const mainImage = getCartImage(item);
 
       return {
@@ -251,7 +270,7 @@ export default function CartDrawer() {
         subcategory: item.product.subcategory,
         size: item.selectedSize,
         quantity: item.quantity,
-        price: item.product.price,
+        price: unitPrice,
         subtotal,
         mainImage,
         image: mainImage,
@@ -674,7 +693,15 @@ ${customerForm.notes || "Sin notas."}`;
 
                   {step === 1 && (
                     <div className="space-y-4">
-                      {items.map((item) => (
+                      {items.map((item) => {
+                        const pricedLine =
+                          wholesaleLineById.get(item.cartItemId || item.id);
+                        const unitPrice =
+                          pricedLine?.unitPrice ?? item.product.price;
+                        const itemSubtotal =
+                          pricedLine?.subtotal ?? unitPrice * item.quantity;
+
+                        return (
                         <div
                           key={item.id}
                           className="rounded-[1.5rem] border border-slate-100 bg-white p-4 shadow-sm"
@@ -696,7 +723,12 @@ ${customerForm.notes || "Sin notas."}`;
                               </div>
 
                               <p className="mt-1 text-sm text-slate-500">
-                                {formatPrice(item.product.price)} c/u
+                                {formatPrice(unitPrice)} c/u
+                                {pricedLine?.usesWholesalePrice && (
+                                  <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700 ring-1 ring-emerald-100">
+                                    Mayoreo aplicado
+                                  </span>
+                                )}
                               </p>
                               <p className="mt-1 text-xs font-bold text-slate-400">
                                 Talla: {item.selectedSize}
@@ -704,13 +736,17 @@ ${customerForm.notes || "Sin notas."}`;
 
                               {isWholesaleProduct(item.product) && (
                                 <p className="mt-1 text-xs font-black text-amber-700">
-                                  {getWholesaleLabel(item.product)}
+                                  {pricedLine?.message ||
+                                    getWholesaleLabel(
+                                      item.product,
+                                      settings.wholesaleSettings
+                                    )}
                                 </p>
                               )}
 
                               <p className="mt-1 text-sm font-black text-slate-950">
                                 Subtotal:{" "}
-                                {formatPrice(item.product.price * item.quantity)}
+                                {formatPrice(itemSubtotal)}
                               </p>
 
                               <div className="mt-3 flex items-center justify-between">
@@ -750,7 +786,8 @@ ${customerForm.notes || "Sin notas."}`;
                             </div>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 

@@ -8,7 +8,12 @@ import {
 } from "@/lib/firebase-services/products";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
 import type { FirebaseProduct } from "@/lib/firebase-types";
-import type { Product } from "@/lib/products";
+import {
+  categoryToSection,
+  isPublicStoreProduct,
+  productAppearsInSection,
+  type Product,
+} from "@/lib/products";
 import { Filter, SlidersHorizontal, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -66,10 +71,14 @@ const colors = [
 const priceOptions = ["Todos", "Menos de $250", "$250 a $400", "Más de $400"];
 
 function belongsToAudience(
-  product: { category: Product["category"] | FirebaseProduct["category"] },
+  product: {
+    category: Product["category"] | FirebaseProduct["category"];
+    sections?: Product["sections"] | FirebaseProduct["sections"];
+  },
   title: "Niña" | "Niño"
 ) {
-  return product.category === title || product.category === "Unisex";
+  const section = categoryToSection(title);
+  return section ? productAppearsInSection(product, section) : false;
 }
 
 function getInitialCatalogProducts(
@@ -80,11 +89,12 @@ function getInitialCatalogProducts(
 
   if (cachedProducts.length > 0) {
     return cachedProducts
+      .filter(isPublicStoreProduct)
       .filter((product) => belongsToAudience(product, title))
       .map(mapFirebaseProductToProduct);
   }
 
-  return fallbackProducts;
+  return fallbackProducts.filter(isPublicStoreProduct);
 }
 
 export default function GenderProductSection({
@@ -148,9 +158,9 @@ export default function GenderProductSection({
 
       try {
         const firebaseProducts = await getActiveProducts();
-        const audienceProducts = firebaseProducts.filter(
-          (product) => belongsToAudience(product, title)
-        );
+        const audienceProducts = firebaseProducts
+          .filter(isPublicStoreProduct)
+          .filter((product) => belongsToAudience(product, title));
 
         if (!isCurrent) return;
 

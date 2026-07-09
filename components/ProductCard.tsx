@@ -3,9 +3,10 @@ import {
   formatPrice,
   getAvailabilityLabel,
   getProductBadges,
+  getSectionLabels,
   type Product,
 } from "@/lib/products";
-import { getWholesaleLabel, isWholesaleProduct } from "@/lib/wholesale";
+import { getWholesaleLabel } from "@/lib/wholesale";
 import { ArrowRight, Eye } from "lucide-react";
 import Link from "next/link";
 
@@ -62,8 +63,8 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
   const availability = getAvailabilityLabel(product);
   const isOutOfStock = availability === "Agotado";
   const productHref = `/producto/${product.slug}`;
-  const hasWholesale = isWholesaleProduct(product);
   const wholesaleLabel = getWholesaleLabel(product);
+  const hasWholesale = Boolean(wholesaleLabel);
 
   return (
     <article className="group overflow-hidden rounded-[1.5rem] bg-white shadow-sm ring-1 ring-slate-100 transition duration-300 hover:-translate-y-1 hover:shadow-xl sm:rounded-[1.75rem]">
@@ -87,21 +88,21 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
             {badges.map((badge) => (
               <span
                 key={badge}
-                className="rounded-full bg-rose-50 px-3 py-1.5 text-[10px] font-black uppercase text-rose-600"
+                className="rounded-xl bg-rose-50 px-3 py-1.5 text-[10px] font-black uppercase text-rose-600"
               >
                 {badge}
               </span>
             ))}
 
             {hasWholesale && (
-              <span className="rounded-full bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase text-amber-700 ring-1 ring-amber-100">
+              <span className="rounded-xl bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase text-amber-700 ring-1 ring-amber-100">
                 Mayoreo
               </span>
             )}
           </div>
 
           <span
-            className={`hidden rounded-full px-2.5 py-1 text-[9px] font-black uppercase sm:inline-flex ${
+            className={`hidden rounded-xl px-2.5 py-1 text-[9px] font-black uppercase sm:inline-flex ${
               isOutOfStock
                 ? "bg-slate-100 text-slate-500"
                 : availability === "Pocas piezas"
@@ -114,7 +115,7 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
         </div>
 
         <p className="text-[11px] font-black uppercase text-slate-400 sm:text-xs">
-          {product.category} · {product.subcategory}
+          {getSectionLabels(product) || product.category} · {product.subcategory}
         </p>
 
         <Link href={productHref}>

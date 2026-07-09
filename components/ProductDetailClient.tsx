@@ -8,11 +8,13 @@ import {
   getAvailabilityLabel,
   getProductBadges,
   getProductStockForSize,
+  getSectionLabels,
   isProductSizeAvailable,
+  productAppearsInSection,
   type Product,
 } from "@/lib/products";
 import { buildWhatsAppUrlWithNumber, useSiteSettings } from "@/hooks/useSiteSettings";
-import { getWholesaleLabel, isWholesaleProduct } from "@/lib/wholesale";
+import { getWholesaleLabel, normalizeWholesaleMode } from "@/lib/wholesale";
 import { useCartStore } from "@/store/cart-store";
 import {
   ArrowLeft,
@@ -55,8 +57,9 @@ export default function ProductDetailClient({
   const isOutOfStock = availability === "Agotado";
   const badges = getProductBadges(product).slice(0, 3);
   const totalVisuals = product.galleryGradients.length;
-  const wholesaleLabel = getWholesaleLabel(product);
-  const hasWholesale = isWholesaleProduct(product);
+  const wholesaleLabel = getWholesaleLabel(product, settings.wholesaleSettings);
+  const wholesaleMode = normalizeWholesaleMode(product.wholesaleMode);
+  const hasWholesale = Boolean(wholesaleLabel);
   const selectedSizeStock = selectedSize
     ? getProductStockForSize(product, selectedSize)
     : product.stock;
@@ -71,11 +74,15 @@ export default function ProductDetailClient({
       : "Seleccionar talla";
 
   const backHref =
-    product.category === "Niño"
+    product.category === "Niño" && productAppearsInSection(product, "nino")
       ? "/nino"
-      : product.category === "Niña"
+      : product.category === "Niña" && productAppearsInSection(product, "nina")
         ? "/nina"
-        : "/";
+        : productAppearsInSection(product, "nina")
+          ? "/nina"
+          : productAppearsInSection(product, "nino")
+            ? "/nino"
+            : "/";
 
   const goToNextVisual = useCallback(() => {
     setSelectedVisual((current) => (current + 1) % totalVisuals);
@@ -237,14 +244,14 @@ Observaciones:`;
               {badges.map((badge) => (
                 <span
                   key={badge}
-                  className="rounded-full bg-rose-50 px-3 py-1.5 text-[10px] font-black uppercase text-rose-600 sm:px-3.5 sm:py-2 sm:text-[11px]"
+                  className="rounded-xl bg-rose-50 px-3 py-1.5 text-[10px] font-black uppercase text-rose-600 sm:px-3.5 sm:py-2 sm:text-[11px]"
                 >
                   {badge}
                 </span>
               ))}
 
               <span
-                className={`rounded-full px-3 py-1.5 text-[10px] font-black uppercase shadow-sm sm:px-3.5 sm:py-2 sm:text-[11px] ${
+                className={`rounded-xl px-3 py-1.5 text-[10px] font-black uppercase sm:px-3.5 sm:py-2 sm:text-[11px] ${
                   isOutOfStock
                     ? "bg-slate-100 text-slate-500"
                     : availability === "Pocas piezas"
@@ -257,7 +264,8 @@ Observaciones:`;
             </div>
 
             <p className="text-[11px] font-black uppercase text-slate-400 sm:text-xs">
-              {product.brand} · {product.category} · {product.subcategory}
+              {product.brand} · {getSectionLabels(product) || product.category} ·{" "}
+              {product.subcategory}
             </p>
 
             <h1 className="mt-2 text-3xl font-black leading-[1] text-slate-950 sm:mt-3 sm:text-4xl lg:text-[2.7rem]">
@@ -285,7 +293,7 @@ Observaciones:`;
                       {wholesaleLabel}
                     </h2>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 sm:text-sm">
-                      {product.wholesaleMode === "surtido"
+                      {wholesaleMode === "mixed"
                         ? "Puedes combinar este producto con otros marcados como mayoreo surtido."
                         : "El mínimo se completa con este mismo producto, aunque cambie la talla."}
                     </p>

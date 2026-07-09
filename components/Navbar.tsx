@@ -3,7 +3,12 @@
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { getActiveProducts } from "@/lib/firebase-services/products";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
-import { formatPrice, products } from "@/lib/products";
+import {
+  formatPrice,
+  getSectionLabels,
+  isPublicStoreProduct,
+  products,
+} from "@/lib/products";
 import { navLinks } from "@/lib/site";
 import { useCartStore } from "@/store/cart-store";
 import { Menu, Search, ShoppingBag, X } from "lucide-react";
@@ -15,7 +20,9 @@ export default function Navbar() {
   const { settings } = useSiteSettings();
   const [query, setQuery] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [catalogProducts, setCatalogProducts] = useState(products);
+  const [catalogProducts, setCatalogProducts] = useState(() =>
+    products.filter(isPublicStoreProduct)
+  );
   const [hasMounted, setHasMounted] = useState(false);
   const pathname = usePathname();
 
@@ -34,6 +41,7 @@ export default function Navbar() {
         return (
           product.name.toLowerCase().includes(normalizedQuery) ||
           product.category.toLowerCase().includes(normalizedQuery) ||
+          getSectionLabels(product).toLowerCase().includes(normalizedQuery) ||
           product.subcategory.toLowerCase().includes(normalizedQuery) ||
           product.colors.join(" ").toLowerCase().includes(normalizedQuery)
         );
@@ -50,7 +58,11 @@ export default function Navbar() {
 
         if (!isCurrent || firebaseProducts.length === 0) return;
 
-        setCatalogProducts(firebaseProducts.map(mapFirebaseProductToProduct));
+        setCatalogProducts(
+          firebaseProducts
+            .filter(isPublicStoreProduct)
+            .map(mapFirebaseProductToProduct)
+        );
       } catch {
         // Keep the local catalog if saved products are not available.
       }

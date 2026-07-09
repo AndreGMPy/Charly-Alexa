@@ -26,6 +26,11 @@ import {
   type Firestore,
   type Transaction,
 } from "firebase-admin/firestore";
+import {
+  calculateWholesaleCart,
+  normalizeWholesaleSettings,
+  type WholesaleProductLike,
+} from "@/lib/wholesale";
 
 export const runtime = "nodejs";
 
@@ -62,6 +67,8 @@ const MAX_TOTAL_ITEMS = 200;
 const MAX_ORDER_TOTAL = 100000;
 const PRODUCTS_COLLECTION = "products";
 const ORDERS_COLLECTION = "orders";
+const SITE_SETTINGS_COLLECTION = "siteSettings";
+const SITE_SETTINGS_DOCUMENT = "main";
 const STOCK_MOVEMENTS_COLLECTION = "stockMovements";
 
 function json(message: string, status: number) {
@@ -290,9 +297,9 @@ function buildOrderItem(
   productId: string,
   size: string,
   quantity: number,
-  product: Record<string, unknown>
+  product: Record<string, unknown>,
+  unitPrice: number
 ): FirebaseOrderItem {
-  const price = getNumberField(product, "price");
   const images = getStringListField(product, "images");
   const mainImage = getStringField(product, "mainImage") || images[0] || "";
   const productName = getStringField(product, "name") || "Producto";
@@ -306,13 +313,28 @@ function buildOrderItem(
     subcategory: getStringField(product, "subcategory"),
     size,
     quantity,
-    price,
-    subtotal: price * quantity,
+    price: unitPrice,
+    subtotal: unitPrice * quantity,
     mainImage,
     image: mainImage,
     wholesaleType:
       (getStringField(product, "wholesaleMode") as WholesaleMode) || "none",
     wholesaleMinimum: getNumberField(product, "wholesaleMinQuantity"),
+  };
+}
+
+function getWholesaleProductLike(
+  productId: string,
+  product: Record<string, unknown>
+): WholesaleProductLike {
+  return {
+    id: productId,
+    name: getStringField(product, "name") || "Producto",
+    price: getNumberField(product, "price"),
+    wholesaleMode: getStringField(product, "wholesaleMode") || "none",
+    wholesalePrice:
+      typeof product.wholesalePrice === "number" ? product.wholesalePrice : null,
+    wholesaleMinQuantity: getNumberField(product, "wholesaleMinQuantity"),
   };
 }
 
@@ -344,6 +366,9 @@ async function writeOrderTransaction(
   );
   const productSnapshots = await Promise.all(
     productRefs.map((productRef) => transaction.get(productRef))
+  );
+  const settingsSnapshot = await transaction.get(
+    firestore.collection(SITE_SETTINGS_COLLECTION).doc(SITE_SETTINGS_DOCUMENT)
   );
   const productDataById = new Map<string, Record<string, unknown>>();
   const stockBySizeById = new Map<string, ProductStockBySize[]>();
@@ -425,14 +450,48 @@ async function writeOrderTransaction(
     nextTotalStockById.set(item.productId, nextTotalStock);
   }
 
-  const orderItems = order.items.map((item) => {
+  const wholesaleSettings = normalizeWholesaleSettings(
+    isRecord(settingsSnapshot.data()?.wholesaleSettings)
+      ? settingsSnapshot.data()?.wholesaleSettings
+      : null
+  );
+  const pricedLines = calculateWholesaleCart(
+    groupedItems.map((item) => {
+      const product = productDataById.get(item.productId);
+
+      if (!product) {
+        throw new SafeOrderError("No se pudo enviar el pedido. Intenta de nuevo.");
+      }
+
+      return {
+        productId: item.productId,
+        product: getWholesaleProductLike(item.productId, product),
+        quantity: item.quantity,
+      };
+    }),
+    wholesaleSettings
+  );
+  const priceByProductId = new Map(
+    pricedLines.map((line) => [line.item.productId, line.unitPrice])
+  );
+
+  const orderItems = groupedItems.map((item) => {
     const product = productDataById.get(item.productId);
 
     if (!product) {
       throw new SafeOrderError("No se pudo enviar el pedido. Intenta de nuevo.");
     }
 
-    return buildOrderItem(item.productId, item.size, item.quantity, product);
+    const unitPrice =
+      priceByProductId.get(item.productId) ?? getNumberField(product, "price");
+
+    return buildOrderItem(
+      item.productId,
+      item.size,
+      item.quantity,
+      product,
+      unitPrice
+    );
   });
   const subtotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
   const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0);
