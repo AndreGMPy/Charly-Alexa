@@ -44,6 +44,35 @@ export const defaultWholesaleSettings: WholesaleSettings = {
   wholesaleInfoText: "Mayoreo disponible desde 6 piezas surtidas.",
 };
 
+export function formatMissingPiecesText(missing: number) {
+  const pieces = Math.max(0, Math.floor(missing));
+  return `Agrega ${pieces} ${pieces === 1 ? "pieza más" : "piezas más"}`;
+}
+
+export function getMixedWholesaleCartMessage(missing: number) {
+  return `Hay productos con mayoreo surtido. ${formatMissingPiecesText(
+    missing
+  )} para activar el precio de mayoreo.`;
+}
+
+export function getMixedWholesaleProductMessage(missing: number) {
+  return `Este producto aplica para mayoreo surtido. ${formatMissingPiecesText(
+    missing
+  )} para obtener precio de mayoreo.`;
+}
+
+export function getProductWholesaleCartMessage(productName: string, missing: number) {
+  return `${productName}: ${formatMissingPiecesText(
+    missing
+  )} para activar el precio de mayoreo.`;
+}
+
+export function getProductWholesaleProductMessage(missing: number) {
+  return `Este producto aplica para mayoreo por producto. ${formatMissingPiecesText(
+    missing
+  )} para obtener precio de mayoreo.`;
+}
+
 export function normalizeWholesaleMode(value: unknown): NormalizedWholesaleMode {
   if (value === "mixed" || value === "surtido") return "mixed";
   if (value === "product" || value === "producto") return "product";
@@ -196,7 +225,7 @@ export function calculateWholesaleCart<TItem extends WholesaleCartLikeItem>(
         usesWholesalePrice = true;
       } else {
         missingForWholesale = mixedTotals.missing;
-        message = `Faltan ${mixedTotals.missing} piezas para mayoreo surtido.`;
+        message = getMixedWholesaleProductMessage(mixedTotals.missing);
       }
     }
 
@@ -209,7 +238,7 @@ export function calculateWholesaleCart<TItem extends WholesaleCartLikeItem>(
         usesWholesalePrice = true;
       } else if (minimum > 0) {
         missingForWholesale = Math.max(0, minimum - productQuantity);
-        message = `Faltan ${missingForWholesale} piezas de este producto para precio mayoreo.`;
+        message = getProductWholesaleProductMessage(missingForWholesale);
       }
     }
 
@@ -230,13 +259,6 @@ export function validateWholesaleCart(
   settings?: Partial<WholesaleSettings> | null
 ): WholesaleValidationResult {
   const pricedLines = calculateWholesaleCart(items, settings);
-  const messages = Array.from(
-    new Set(
-      pricedLines
-        .map((line) => line.message)
-        .filter((message): message is string => Boolean(message))
-    )
-  );
   const mixedMissing = Math.max(
     0,
     ...pricedLines
@@ -253,6 +275,12 @@ export function validateWholesaleCart(
       productName: line.item.product.name,
       missing: line.missingForWholesale,
     }));
+  const messages = [
+    ...(mixedMissing > 0 ? [getMixedWholesaleCartMessage(mixedMissing)] : []),
+    ...missingByProduct.map((item) =>
+      getProductWholesaleCartMessage(item.productName, item.missing)
+    ),
+  ];
 
   return {
     canCheckout: true,

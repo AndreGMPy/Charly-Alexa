@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
+import Link from "next/link";
 
 export default function SiteFooter() {
   const { settings } = useSiteSettings();
@@ -78,13 +79,13 @@ export default function SiteFooter() {
 
             <ul className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 sm:block sm:space-y-2">
               {policyLinks.map((item) => (
-                <li key={item}>
-                  <a
-                    href="#"
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
                     className="text-[11px] font-medium text-slate-500 transition hover:text-rose-500 sm:text-xs"
                   >
-                    {item}
-                  </a>
+                    {item.label}
+                  </Link>
                 </li>
               ))}
             </ul>

@@ -1,12 +1,17 @@
 "use client";
 
 import { useSiteSettings } from "@/hooks/useSiteSettings";
-import { Clock, MessageCircle, Ruler, Truck } from "lucide-react";
+import { Clock, MapPin, MessageCircle, Ruler, Truck } from "lucide-react";
 
 export default function StoreInfoSection() {
   const { settings } = useSiteSettings();
 
   const infoItems = [
+    {
+      title: "Ubicación",
+      description: settings.address,
+      icon: MapPin,
+    },
     {
       title: "Elige tu talla",
       description: "Consulta tallas disponibles antes de pedir.",
@@ -34,7 +39,10 @@ export default function StoreInfoSection() {
   ];
 
   return (
-    <section className="border-y border-rose-100 bg-[#fffaf5] px-4 py-6 sm:px-5 sm:py-10">
+    <section
+      id="ubicacion"
+      className="border-y border-rose-100 bg-[#fffaf5] px-4 py-6 sm:px-5 sm:py-10"
+    >
       <div className="mx-auto max-w-7xl">
         {settings.storefrontImage && (
           <div className="mb-4 overflow-hidden rounded-[1.75rem] bg-white shadow-sm ring-1 ring-rose-100 sm:mb-6">

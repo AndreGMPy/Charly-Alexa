@@ -32,7 +32,13 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+} from "react";
 import { toast } from "sonner";
 
 type ProductDetailClientProps = {
@@ -52,11 +58,14 @@ export default function ProductDetailClient({
   const [quantity, setQuantity] = useState(1);
   const [isSizeGuideOpen, setIsSizeGuideOpen] = useState(false);
   const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const zoomSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const zoomSwipeDeltaRef = useRef({ x: 0, y: 0 });
 
   const availability = getAvailabilityLabel(product);
   const isOutOfStock = availability === "Agotado";
   const badges = getProductBadges(product).slice(0, 3);
   const totalVisuals = product.galleryGradients.length;
+  const hasMultipleVisuals = totalVisuals > 1;
   const wholesaleLabel = getWholesaleLabel(product, settings.wholesaleSettings);
   const wholesaleMode = normalizeWholesaleMode(product.wholesaleMode);
   const hasWholesale = Boolean(wholesaleLabel);
@@ -85,14 +94,62 @@ export default function ProductDetailClient({
             : "/";
 
   const goToNextVisual = useCallback(() => {
+    if (totalVisuals <= 1) return;
     setSelectedVisual((current) => (current + 1) % totalVisuals);
   }, [totalVisuals]);
 
   const goToPreviousVisual = useCallback(() => {
+    if (totalVisuals <= 1) return;
     setSelectedVisual((current) =>
       current === 0 ? totalVisuals - 1 : current - 1
     );
   }, [totalVisuals]);
+
+  function resetZoomSwipe() {
+    zoomSwipeStartRef.current = null;
+    zoomSwipeDeltaRef.current = { x: 0, y: 0 };
+  }
+
+  function handleZoomPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!hasMultipleVisuals || event.pointerType === "mouse") return;
+
+    zoomSwipeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    zoomSwipeDeltaRef.current = { x: 0, y: 0 };
+  }
+
+  function handleZoomPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!zoomSwipeStartRef.current) return;
+
+    const deltaX = event.clientX - zoomSwipeStartRef.current.x;
+    const deltaY = event.clientY - zoomSwipeStartRef.current.y;
+
+    zoomSwipeDeltaRef.current = { x: deltaX, y: deltaY };
+
+    if (Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      event.preventDefault();
+    }
+  }
+
+  function handleZoomPointerUp() {
+    if (!zoomSwipeStartRef.current) return;
+
+    const { x: deltaX, y: deltaY } = zoomSwipeDeltaRef.current;
+    const horizontalSwipe =
+      Math.abs(deltaX) >= 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+
+    if (horizontalSwipe) {
+      if (deltaX < 0) {
+        goToNextVisual();
+      } else {
+        goToPreviousVisual();
+      }
+    }
+
+    resetZoomSwipe();
+  }
 
   useEffect(() => {
     if (!isZoomOpen) return;
@@ -213,30 +270,32 @@ Observaciones:`;
               </div>
             </button>
 
-            <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:gap-3">
-              {product.galleryGradients.map((gradient, index) => (
-                <button
-                  key={`${gradient}-${index}`}
-                  type="button"
-                  onClick={() => setSelectedVisual(index)}
-                  className={`overflow-hidden rounded-2xl border-2 bg-white transition ${
-                    selectedVisual === index
-                      ? "border-rose-400 shadow-sm"
-                      : "border-white hover:border-rose-200"
-                  }`}
-                  aria-label={`Ver imagen ${index + 1} de ${product.name}`}
-                >
-                  <ProductVisual
-                    product={product}
-                    variant={index}
-                    compact
-                    showName={false}
-                    showBadges={false}
-                    className="h-16 sm:h-24"
-                  />
-                </button>
-              ))}
-            </div>
+            {hasMultipleVisuals && (
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:mt-4 sm:gap-3">
+                {product.galleryGradients.map((gradient, index) => (
+                  <button
+                    key={`${gradient}-${index}`}
+                    type="button"
+                    onClick={() => setSelectedVisual(index)}
+                    className={`overflow-hidden rounded-2xl border-2 bg-white transition ${
+                      selectedVisual === index
+                        ? "border-rose-400 shadow-sm"
+                        : "border-white hover:border-rose-200"
+                    }`}
+                    aria-label={`Ver imagen ${index + 1} de ${product.name}`}
+                  >
+                    <ProductVisual
+                      product={product}
+                      variant={index}
+                      compact
+                      showName={false}
+                      showBadges={false}
+                      className="h-16 sm:h-24"
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="lg:pt-2">
@@ -527,7 +586,7 @@ Observaciones:`;
             <X size={22} />
           </button>
 
-          {totalVisuals > 1 && (
+          {hasMultipleVisuals && (
             <>
               <button
                 type="button"
@@ -535,10 +594,10 @@ Observaciones:`;
                   event.stopPropagation();
                   goToPreviousVisual();
                 }}
-                className="absolute left-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-950 shadow-lg transition hover:scale-105 sm:left-6 sm:h-12 sm:w-12"
+                className="absolute left-6 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-slate-950 shadow-md ring-1 ring-white/40 transition hover:scale-105 hover:bg-white sm:flex"
                 aria-label="Imagen anterior"
               >
-                <ChevronLeft size={24} />
+                <ChevronLeft size={22} />
               </button>
 
               <button
@@ -547,10 +606,10 @@ Observaciones:`;
                   event.stopPropagation();
                   goToNextVisual();
                 }}
-                className="absolute right-3 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-950 shadow-lg transition hover:scale-105 sm:right-6 sm:h-12 sm:w-12"
+                className="absolute right-6 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-slate-950 shadow-md ring-1 ring-white/40 transition hover:scale-105 hover:bg-white sm:flex"
                 aria-label="Imagen siguiente"
               >
-                <ChevronRight size={24} />
+                <ChevronRight size={22} />
               </button>
             </>
           )}
@@ -559,7 +618,13 @@ Observaciones:`;
             className="mx-auto flex h-full max-w-5xl flex-col justify-center"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="overflow-hidden rounded-[1.5rem] bg-white shadow-2xl sm:rounded-[2rem]">
+            <div
+              className="overflow-hidden rounded-[1.5rem] bg-white shadow-2xl [touch-action:pan-y] sm:rounded-[2rem]"
+              onPointerDown={handleZoomPointerDown}
+              onPointerMove={handleZoomPointerMove}
+              onPointerUp={handleZoomPointerUp}
+              onPointerCancel={resetZoomSwipe}
+            >
               <ProductVisual
                 product={product}
                 variant={selectedVisual}
@@ -567,44 +632,51 @@ Observaciones:`;
               />
             </div>
 
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white/10 p-2 backdrop-blur">
-              <p className="hidden truncate px-2 text-sm font-black text-white sm:block">
-                {product.name}
-              </p>
+            {hasMultipleVisuals && (
+              <>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white/10 p-2 backdrop-blur">
+                  <p className="hidden truncate px-2 text-sm font-black text-white sm:block">
+                    {product.name}
+                  </p>
 
-              <div className="mx-auto flex gap-2 overflow-x-auto sm:mx-0">
-                {product.galleryGradients.map((gradient, index) => (
-                  <button
-                    key={`zoom-${gradient}-${index}`}
-                    type="button"
-                    onClick={() => setSelectedVisual(index)}
-                    className={`h-14 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition sm:h-16 sm:w-24 ${
-                      selectedVisual === index
-                        ? "border-rose-400"
-                        : "border-white/40 hover:border-white"
-                    }`}
-                    aria-label={`Ver imagen ${index + 1}`}
-                  >
-                    <ProductVisual
-                      product={product}
-                      variant={index}
-                      compact
-                      showName={false}
-                      showBadges={false}
-                      className="h-full"
-                    />
-                  </button>
-                ))}
-              </div>
+                  <div className="mx-auto flex gap-2 overflow-x-auto sm:mx-0">
+                    {product.galleryGradients.map((gradient, index) => (
+                      <button
+                        key={`zoom-${gradient}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedVisual(index)}
+                        className={`h-14 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition sm:h-16 sm:w-24 ${
+                          selectedVisual === index
+                            ? "border-rose-400"
+                            : "border-white/40 hover:border-white"
+                        }`}
+                        aria-label={`Ver imagen ${index + 1}`}
+                      >
+                        <ProductVisual
+                          product={product}
+                          variant={index}
+                          compact
+                          showName={false}
+                          showBadges={false}
+                          className="h-full"
+                        />
+                      </button>
+                    ))}
+                  </div>
 
-              <p className="hidden px-2 text-sm font-black text-white sm:block">
-                {selectedVisual + 1}/{totalVisuals}
-              </p>
-            </div>
+                  <p className="hidden px-2 text-sm font-black text-white sm:block">
+                    {selectedVisual + 1}/{totalVisuals}
+                  </p>
+                </div>
 
-            <p className="mt-3 text-center text-xs font-bold text-white/70">
-              Usa las flechas, las miniaturas o toca fuera para cerrar.
-            </p>
+                <p className="mt-2 text-center text-xs font-bold text-white/70">
+                  <span className="sm:hidden">Desliza para ver más fotos.</span>
+                  <span className="hidden sm:inline">
+                    Usa flechas o miniaturas para cambiar imagen.
+                  </span>
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

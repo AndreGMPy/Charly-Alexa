@@ -303,7 +303,7 @@ export default function CartDrawer() {
       ? `Método de entrega: ${customerForm.deliveryMethod}\n\nDirección:\n${deliveryAddressText}`
       : `Entrega: ${customerForm.deliveryMethod}`;
     const quoteText = orderShipping.requiresQuote
-      ? "\n\nEl envío se confirmará por WhatsApp."
+      ? "\n\nEl envío de pedidos grandes o mayoreo se confirmará por WhatsApp."
       : "";
 
     return `Hola, quiero confirmar este pedido:
@@ -589,7 +589,7 @@ ${customerForm.notes || "Sin notas."}`;
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-5 pb-56 sm:pb-40">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
               {confirmation ? (
                 <div className="flex min-h-full flex-col items-center justify-center text-center">
                   <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-[2rem] bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
@@ -1001,7 +1001,7 @@ ${customerForm.notes || "Sin notas."}`;
 
                       {shipping.requiresQuote && (
                         <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-800 ring-1 ring-amber-100">
-                          El envío de pedidos grandes se confirma por WhatsApp.
+                          El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
                         </p>
                       )}
 
@@ -1156,7 +1156,7 @@ ${customerForm.notes || "Sin notas."}`;
 
                         {shipping.requiresQuote && (
                           <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
-                            El envío de pedidos grandes se confirma por WhatsApp.
+                            El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
                           </p>
                         )}
                       </div>
@@ -1182,7 +1182,7 @@ ${customerForm.notes || "Sin notas."}`;
                         </p>
                         {shipping.requiresQuote && (
                           <p className="mt-2">
-                            El envío de pedidos grandes se confirma por WhatsApp.
+                            El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
                           </p>
                         )}
                       </div>
@@ -1203,7 +1203,7 @@ ${customerForm.notes || "Sin notas."}`;
               )}
             </div>
 
-            <div className="shrink-0 border-t border-rose-100 bg-white/90 p-3 shadow-[0_-10px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-4">
+            <div className="shrink-0 border-t border-rose-100 bg-white/90 px-3 pb-[calc(0.625rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-4">
               {confirmation ? (
                 <div className="grid gap-2">
                   <button
@@ -1246,7 +1246,27 @@ ${customerForm.notes || "Sin notas."}`;
                 </div>
               ) : (
                 <>
-                  <div className="mb-3 space-y-1.5">
+                  <div className="mb-2 sm:hidden">
+                    <p className="truncate text-[11px] font-bold text-slate-500">
+                      Subtotal {formatPrice(subtotal)} · Envío{" "}
+                      {shipping.requiresQuote ? "a cotizar" : formatPrice(shippingCost)}
+                    </p>
+                    <div className="mt-0.5 flex items-center justify-between gap-3">
+                      <span className="text-xs font-black text-slate-600">
+                        Total
+                      </span>
+                      <strong className="text-2xl font-black leading-none text-slate-950">
+                        {formatPrice(total)}
+                      </strong>
+                    </div>
+                    {shipping.requiresQuote && (
+                      <p className="mt-1 rounded-xl bg-amber-50 px-2.5 py-1 text-[10px] font-bold leading-4 text-amber-800 ring-1 ring-amber-100">
+                        El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="mb-3 hidden space-y-1.5 sm:block">
                     <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
                       <span>Subtotal</span>
                       <span className="text-slate-950">
@@ -1267,7 +1287,7 @@ ${customerForm.notes || "Sin notas."}`;
                     </div>
                     {shipping.requiresQuote && (
                       <p className="rounded-2xl bg-amber-50 px-3 py-1.5 text-[11px] font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
-                        El envío de pedidos grandes se confirma por WhatsApp.
+                        El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
                       </p>
                     )}
                   </div>
@@ -1281,7 +1301,7 @@ ${customerForm.notes || "Sin notas."}`;
                             Math.max(current - 1, 1) as CheckoutStep
                           )
                         }
-                        className="flex items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
+                        className="hidden items-center justify-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50 sm:flex"
                       >
                         <ChevronLeft size={18} />
                         Regresar
@@ -1293,7 +1313,7 @@ ${customerForm.notes || "Sin notas."}`;
                         type="button"
                         onClick={handleNextStep}
                         disabled={items.length === 0 || !canContinue}
-                        className="rounded-full bg-rose-500 px-4 py-3 text-sm font-black text-white shadow-md shadow-rose-100 transition hover:scale-[1.01] hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                        className="rounded-full bg-rose-500 px-4 py-2.5 text-sm font-black text-white shadow-md shadow-rose-100 transition hover:scale-[1.01] hover:bg-rose-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none sm:py-3"
                       >
                         Continuar
                       </button>
@@ -1307,7 +1327,7 @@ ${customerForm.notes || "Sin notas."}`;
                           items.length === 0 ||
                           !canContinue
                         }
-                        className="flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-4 py-3 text-sm font-black text-white shadow-md shadow-emerald-100 transition hover:scale-[1.01] hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+                        className="flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-black text-white shadow-md shadow-emerald-100 transition hover:scale-[1.01] hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none sm:py-3"
                       >
                         {customerForm.paymentPreference === "pay_now" ? (
                           <CreditCard size={17} />
@@ -1324,25 +1344,42 @@ ${customerForm.notes || "Sin notas."}`;
                       </button>
                     )}
 
-                    <button
-                      type="button"
-                      onClick={closeCart}
-                      className="rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
-                    >
-                      Seguir comprando
-                    </button>
+                    <div className="flex flex-wrap items-center justify-center gap-2 sm:grid sm:gap-2">
+                      {step > 1 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setStep((current) =>
+                              Math.max(current - 1, 1) as CheckoutStep
+                            )
+                          }
+                          className="inline-flex items-center justify-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-black text-slate-600 transition hover:bg-slate-100 sm:hidden"
+                        >
+                          <ChevronLeft size={14} />
+                          Regresar
+                        </button>
+                      )}
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        clearCart();
-                        resetCartState();
-                      }}
-                      className="rounded-full bg-slate-100 px-4 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:text-slate-400"
-                      disabled={items.length === 0}
-                    >
-                      Vaciar carrito
-                    </button>
+                      <button
+                        type="button"
+                        onClick={closeCart}
+                        className="rounded-full px-2.5 py-1.5 text-xs font-black text-slate-600 transition hover:bg-rose-50 sm:bg-white sm:px-4 sm:py-2.5 sm:text-sm sm:text-slate-700 sm:shadow-sm sm:ring-1 sm:ring-slate-100"
+                      >
+                        Seguir comprando
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearCart();
+                          resetCartState();
+                        }}
+                        className="rounded-full px-2.5 py-1.5 text-xs font-black text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:text-slate-300 sm:bg-slate-100 sm:px-4 sm:py-2.5 sm:text-sm sm:text-slate-700 sm:hover:bg-slate-200"
+                        disabled={items.length === 0}
+                      >
+                        Vaciar carrito
+                      </button>
+                    </div>
                   </div>
                 </>
               )}

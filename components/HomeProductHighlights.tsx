@@ -14,10 +14,13 @@ import { useEffect, useState } from "react";
 
 function getCachedFeaturedOffers() {
   const cachedProducts = getCachedActiveProducts();
+  const publicProducts = cachedProducts.filter(isPublicStoreProduct);
+  const offerProducts = publicProducts.filter((product) => product.isOffer);
+  const fallbackProducts = publicProducts.filter((product) => product.isFeatured);
+  const productsForSection =
+    offerProducts.length > 0 ? offerProducts : fallbackProducts;
 
-  return cachedProducts
-    .filter(isPublicStoreProduct)
-    .filter((product) => product.isFeatured || product.isOffer)
+  return productsForSection
     .sort((a, b) => a.featuredOrder - b.featuredOrder)
     .slice(0, 5)
     .map(mapFirebaseProductToProduct);
@@ -58,6 +61,9 @@ export default function HomeProductHighlights() {
 
         const featuredIds = homepageSettings?.featuredProductIds ?? [];
         const publicProducts = firebaseProducts.filter(isPublicStoreProduct);
+        const offerProducts = publicProducts
+          .filter((product) => product.isOffer)
+          .sort((a, b) => a.featuredOrder - b.featuredOrder);
         const selectedProducts =
           featuredIds.length > 0
             ? featuredIds
@@ -68,15 +74,25 @@ export default function HomeProductHighlights() {
                   (product): product is (typeof firebaseProducts)[number] =>
                     Boolean(product)
                 )
-            : publicProducts
-                .filter((product) => product.isFeatured)
-                .sort((a, b) => a.featuredOrder - b.featuredOrder);
-        const homeProducts =
-          selectedProducts.length > 0
-            ? selectedProducts
-            : [...publicProducts].sort(
-                (a, b) => getDateValue(b.createdAt) - getDateValue(a.createdAt)
-              );
+            : [];
+        const featuredProducts = publicProducts
+          .filter((product) => product.isFeatured)
+          .sort((a, b) => a.featuredOrder - b.featuredOrder);
+        let homeProducts = offerProducts;
+
+        if (homeProducts.length === 0) {
+          homeProducts = selectedProducts;
+        }
+
+        if (homeProducts.length === 0) {
+          homeProducts = featuredProducts;
+        }
+
+        if (homeProducts.length === 0) {
+          homeProducts = [...publicProducts].sort(
+            (a, b) => getDateValue(b.createdAt) - getDateValue(a.createdAt)
+          );
+        }
 
         if (homeProducts.length === 0) return;
 
@@ -106,17 +122,17 @@ export default function HomeProductHighlights() {
   }
 
   return (
-    <section className="bg-[#fffaf5] px-4 py-7 sm:px-5 sm:py-14">
+    <section id="ofertas" className="bg-[#fffaf5] px-4 py-7 sm:px-5 sm:py-14">
       <div className="mx-auto max-w-7xl">
         <div className="mb-5 max-w-3xl sm:mb-7">
           <p className="text-[11px] font-black uppercase tracking-[0.22em] text-rose-500 sm:text-xs">
-            Selección de boutique
+            Ofertas de boutique
           </p>
           <h2 className="mt-1.5 text-2xl font-black leading-tight text-slate-950 sm:mt-2 sm:text-4xl">
-            Prendas destacadas
+            Ofertas y prendas destacadas
           </h2>
           <p className="mt-2 max-w-xl text-sm font-bold leading-6 text-slate-500 sm:text-base">
-            Piezas elegidas para encontrar rápido lo más especial de la colección.
+            Encuentra promociones activas y piezas elegidas para renovar su clóset.
           </p>
         </div>
 
