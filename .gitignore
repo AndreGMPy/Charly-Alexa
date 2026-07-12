@@ -19,6 +19,9 @@
 
 # production
 /build
+/desktop/dist/
+/desktop/node_modules/
+/desktop/src-tauri/target/
 
 # misc
 .DS_Store

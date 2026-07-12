@@ -1,0 +1,24 @@
+:root { font-family: "Trebuchet MS", sans-serif; color: #17342e; background: #eee9df; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 900px; min-height: 100vh; background: radial-gradient(circle at 80% 0%, #f8d4c1 0, transparent 32%), #eee9df; }
+button, input { font: inherit; }
+.shell { min-height: 100vh; padding: 30px 38px 48px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #17342e33; padding-bottom: 20px; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { margin-bottom: 0; font: 600 42px/1 Georgia, serif; }
+h2 { max-width: 650px; margin-bottom: 0; font: 600 48px/1.05 Georgia, serif; }
+.eyebrow { margin-bottom: 8px; color: #a24930; font-size: 11px; font-weight: 700; letter-spacing: .16em; }
+.connection { display: flex; gap: 9px; align-items: center; padding: 10px 14px; border: 1px solid #17342e; border-radius: 99px; font-size: 13px; font-weight: 700; }
+.connection span { width: 9px; height: 9px; border-radius: 50%; background: #d46a47; }
+.offline-note { display: grid; grid-template-columns: 150px 1fr auto; align-items: center; gap: 24px; margin: 24px 0 58px; padding: 18px 22px; color: #fff9ee; background: #173f36; border-radius: 4px; }
+.offline-note p, .offline-note small { margin: 0; }
+.intro { display: grid; grid-template-columns: 1.5fr .7fr; gap: 80px; align-items: end; margin-bottom: 34px; }
+.intro > p { margin-bottom: 4px; color: #52645f; line-height: 1.7; }
+.module-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.module { min-height: 205px; padding: 20px; border: 1px solid #17342e33; background: #f7f3ebaa; }
+.module.featured { color: #fff9ee; background: #a24930; border-color: #a24930; }
+.module > span { font-size: 11px; letter-spacing: .12em; opacity: .65; }
+.module h3 { margin: 42px 0 10px; font: 600 24px/1.1 Georgia, serif; }
+.module p { min-height: 46px; color: inherit; font-size: 13px; line-height: 1.45; opacity: .82; }
+.module small { font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+@media (max-width: 1000px) { body { min-width: 720px; } .module-grid { grid-template-columns: repeat(2, 1fr); } }
