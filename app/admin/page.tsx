@@ -104,6 +104,11 @@ function startOfCurrentMonth() {
   return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 }
 
+function startOfToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+}
+
 function startOfLastThreeMonths() {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth() - 2, 1).getTime();
@@ -143,6 +148,15 @@ function getSalesForPeriod(sales: SaleRecord[], period: PeriodFilter) {
 
 function sumSaleTotal(sales: SaleRecord[]) {
   return sales.reduce((total, sale) => total + (sale.total ?? 0), 0);
+}
+
+function sumSalePieces(sales: SaleRecord[]) {
+  return sales.reduce(
+    (total, sale) =>
+      total +
+      sale.items.reduce((itemTotal, item) => itemTotal + (item.quantity ?? 0), 0),
+    0
+  );
 }
 
 function countWebOrders(sales: SaleRecord[]) {
@@ -220,23 +234,17 @@ export default function AdminDashboardPage() {
     });
   }, [loadDashboard]);
 
-  const activeProducts = useMemo(
-    () => products.filter((product) => product.isActive),
-    [products]
-  );
   const outOfStockProducts = useMemo(
     () => products.filter((product) => product.isActive && product.stock <= 0),
     [products]
   );
-  const totalAvailablePieces = useMemo(
+  const lowStockProducts = useMemo(
     () =>
-      activeProducts.reduce(
-        (total, product) => total + Math.max(product.stock ?? 0, 0),
-        0
+      products.filter(
+        (product) => product.isActive && product.stock > 0 && product.stock <= 4
       ),
-    [activeProducts]
+    [products]
   );
-
   const salesRecords = useMemo<SaleRecord[]>(
     () => [
       ...orders.map((order) => ({
@@ -261,6 +269,13 @@ export default function AdminDashboardPage() {
     () => getSalesForPeriod(salesRecords, "month"),
     [salesRecords]
   );
+  const todaySales = useMemo(
+    () =>
+      salesRecords
+        .filter(isCompletedSale)
+        .filter((sale) => getDateValue(sale.createdAt) >= startOfToday()),
+    [salesRecords]
+  );
   const quarterSales = useMemo(
     () => getSalesForPeriod(salesRecords, "quarter"),
     [salesRecords]
@@ -276,8 +291,26 @@ export default function AdminDashboardPage() {
   const topProducts = useMemo(() => getTopProducts(visibleSales), [visibleSales]);
   const maxTopQuantity = Math.max(...topProducts.map((product) => product.quantity), 1);
   const pendingOrders = orders.filter(isPendingOrder).length;
+  const cancelledSales = salesRecords.filter(
+    (sale) =>
+      sale.status === "cancelled" ||
+      sale.status === "Cancelado" ||
+      sale.status === "Cancelada"
+  ).length;
+  const monthAverageTicket =
+    monthSales.length > 0 ? sumSaleTotal(monthSales) / monthSales.length : 0;
 
   const salesCards = [
+    {
+      label: "Ventas de hoy",
+      value: formatPrice(sumSaleTotal(todaySales)),
+      detail:
+        todaySales.length > 0
+          ? `${todaySales.length} venta(s) · ${sumSalePieces(todaySales)} pieza(s)`
+          : "Sin ventas hoy",
+      icon: TrendingUp,
+      className: "bg-lime-50 text-lime-700 ring-lime-100",
+    },
     {
       label: "Ventas del mes",
       value: formatPrice(sumSaleTotal(monthSales)),
@@ -291,40 +324,33 @@ export default function AdminDashboardPage() {
       className: "bg-rose-50 text-rose-600 ring-rose-100",
     },
     {
-      label: "Ventas últimos 3 meses",
-      value: formatPrice(sumSaleTotal(quarterSales)),
-      detail:
-        quarterSales.length > 0
-          ? `${countWebOrders(quarterSales)} pedido(s) web · ${countStoreSales(
-              quarterSales
-            )} venta(s) de tienda`
-          : "Sin ventas en este periodo",
+      label: "Ticket promedio",
+      value: formatPrice(monthAverageTicket),
+      detail: monthSales.length > 0 ? "Promedio del mes" : "Sin ventas este mes",
       icon: BarChart3,
       className: "bg-amber-50 text-amber-700 ring-amber-100",
     },
     {
-      label: "Ventas históricas",
-      value: formatPrice(sumSaleTotal(allSales)),
-      detail:
-        allSales.length > 0
-          ? `${countWebOrders(allSales)} pedido(s) web · ${countStoreSales(
-              allSales
-            )} venta(s) de tienda`
-          : "Aún no hay ventas registradas",
+      label: "Piezas vendidas",
+      value: String(sumSalePieces(monthSales)),
+      detail: "Piezas del mes",
       icon: ShoppingBag,
       className: "bg-sky-50 text-sky-700 ring-sky-100",
     },
     {
-      label: "Pedidos pendientes",
+      label: "Pedidos web pendientes",
       value: String(pendingOrders),
       detail: pendingOrders > 0 ? "Revisar pedidos" : "Todo al día",
       icon: ClipboardList,
       className: "bg-lime-50 text-lime-700 ring-lime-100",
     },
     {
-      label: "Productos activos",
-      value: String(activeProducts.length),
-      detail: "Visibles en tienda",
+      label: "Productos bajos",
+      value: String(lowStockProducts.length),
+      detail:
+        lowStockProducts.length > 0
+          ? "Revisar inventario"
+          : "Sin bajos de stock",
       icon: PackageCheck,
       className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
     },
@@ -339,9 +365,9 @@ export default function AdminDashboardPage() {
       className: "bg-slate-100 text-slate-600 ring-slate-200",
     },
     {
-      label: "Piezas disponibles",
-      value: String(totalAvailablePieces),
-      detail: "Suma de productos activos",
+      label: "Ventas canceladas",
+      value: String(cancelledSales),
+      detail: cancelledSales > 0 ? "Revisar historial" : "Sin cancelaciones",
       icon: Package,
       className: "bg-white text-slate-700 ring-slate-100",
     },

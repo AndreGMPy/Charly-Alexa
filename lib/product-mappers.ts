@@ -1,12 +1,15 @@
 import type { FirebaseProduct } from "@/lib/firebase-types";
 import {
+  normalizeProductCategory,
   normalizeProductSections,
+  normalizeProductSubcategories,
+  sectionToCategory,
   type Product,
   type ProductBadge,
 } from "@/lib/products";
 
 const gradientsByCategory: Record<
-  FirebaseProduct["category"],
+  Product["category"],
   { gradient: string; galleryGradients: string[] }
 > = {
   Niña: {
@@ -50,7 +53,12 @@ export function mapFirebaseProductToProduct(
   product: FirebaseProduct
 ): Product {
   const badges = getProductBadgesFromFlags(product);
-  const visual = gradientsByCategory[product.category];
+  const sections = normalizeProductSections(product);
+  const category = sections[0]
+    ? sectionToCategory(sections[0])
+    : normalizeProductCategory(product.category);
+  const subcategories = normalizeProductSubcategories(product);
+  const visual = gradientsByCategory[category];
   const cleanImages = product.images.filter(Boolean);
   const mainImage = product.mainImage || cleanImages[0] || "";
 
@@ -58,10 +66,12 @@ export function mapFirebaseProductToProduct(
     id: product.id,
     slug: product.slug,
     name: product.name,
-    category: product.category,
-    sections: normalizeProductSections(product),
-    subcategory: product.subcategory || "General",
+    category,
+    sections,
+    subcategory: subcategories[0] || product.subcategory || "General",
+    subcategories,
     price: product.price,
+    basePrice: product.basePrice,
     sizes: product.sizes.length > 0 ? product.sizes : ["Unitalla"],
     colors: product.colors.length > 0 ? product.colors : ["Sin color"],
     brand: "Charly Alexa",
@@ -71,6 +81,7 @@ export function mapFirebaseProductToProduct(
     badges,
     stock: product.stock,
     stockBySize: product.stockBySize,
+    stockByVariant: product.stockByVariant,
     gradient: visual.gradient,
     galleryGradients: visual.galleryGradients,
     imageUrl: mainImage,
@@ -86,5 +97,8 @@ export function mapFirebaseProductToProduct(
     wholesalePrice: product.wholesalePrice ?? null,
     wholesaleMinQuantity: product.wholesaleMinQuantity ?? 0,
     wholesaleNote: product.wholesaleNote ?? "",
+    wholesaleRunEnabled: Boolean(product.wholesaleRunEnabled),
+    wholesaleRunPrice: product.wholesaleRunPrice ?? null,
+    wholesaleRunSizes: product.wholesaleRunSizes ?? [],
   };
 }

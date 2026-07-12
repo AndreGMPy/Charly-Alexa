@@ -4,8 +4,16 @@ import type {
   ProductSizeStock,
 } from "@/lib/firebase-types";
 import {
+  getVariantKey,
+  hasStoredStockByVariant,
+  normalizeStockByVariant,
+  stockByVariantToStockBySize,
+  sumStockByVariant,
+} from "@/lib/variant-utils";
+import {
   collection,
   doc,
+  runTransaction,
   serverTimestamp,
   type Firestore,
   type Transaction,
@@ -14,7 +22,9 @@ import {
 export type InventoryMovementType =
   | "web_order"
   | "store_sale"
-  | "order_cancelled";
+  | "order_cancelled"
+  | "store_sale_cancelled"
+  | "inventory_adjustment";
 
 export type InventoryMovementContext = {
   type: InventoryMovementType;
@@ -24,9 +34,28 @@ export type InventoryMovementContext = {
   createdBy?: string;
 };
 
+export type InventoryAdjustmentReason =
+  | "conteo físico"
+  | "merma"
+  | "devolución"
+  | "corrección"
+  | "entrada de mercancía";
+
+export type InventoryAdjustmentInput = {
+  productId: string;
+  productName: string;
+  color: string;
+  size: string;
+  mode: "set" | "move";
+  quantity: number;
+  reason: InventoryAdjustmentReason;
+  createdBy?: string;
+};
+
 type GroupedInventoryItem = {
   productId: string;
   productName: string;
+  color: string;
   size: string;
   quantity: number;
 };
@@ -95,12 +124,13 @@ function groupInventoryItems(items: FirebaseOrderItem[]) {
 
   for (const item of items) {
     const productId = item.productId;
+    const color = getVariantKey(item.color);
     const size = item.size || "Unitalla";
     const quantity = Math.max(Number(item.quantity) || 0, 0);
 
     if (!productId || quantity <= 0) continue;
 
-    const key = `${productId}::${size}`;
+    const key = `${productId}::${color}::${size}`;
     const current = groupedItems.get(key);
 
     if (current) {
@@ -111,6 +141,7 @@ function groupInventoryItems(items: FirebaseOrderItem[]) {
     groupedItems.set(key, {
       productId,
       productName: getItemName(item),
+      color,
       size,
       quantity,
     });
@@ -151,13 +182,30 @@ export async function applyInventoryChangesInTransaction(
     const productData = productSnapshot.data() as Partial<FirebaseProduct>;
     let nextStockBySize = normalizeStockBySize(productData.stockBySize);
     let nextTotalStock = getStockTotal(productData);
+    const usesVariantStock = hasStoredStockByVariant(productData.stockByVariant);
+    const productColors = productData.colors?.length ? productData.colors : ["Sin color"];
+    const productSizes =
+      productData.sizes?.length
+        ? productData.sizes
+        : nextStockBySize.length > 0
+          ? nextStockBySize.map((item) => item.size)
+          : ["Unitalla"];
+    let nextStockByVariant = normalizeStockByVariant(
+      productData.stockByVariant,
+      productColors,
+      productSizes,
+      nextStockBySize,
+      productData.stock ?? 0
+    );
 
     productItems.forEach((item) => {
-      const previousSizeStock = getStockForSize(
-        { ...productData, stock: nextTotalStock },
-        nextStockBySize,
-        item.size
-      );
+      const previousSizeStock = usesVariantStock
+        ? Math.max(nextStockByVariant[item.color]?.[item.size] ?? 0, 0)
+        : getStockForSize(
+            { ...productData, stock: nextTotalStock },
+            nextStockBySize,
+            item.size
+          );
 
       if (direction === "decrease" && previousSizeStock < item.quantity) {
         throw new Error(
@@ -169,12 +217,27 @@ export async function applyInventoryChangesInTransaction(
         direction === "decrease" ? -item.quantity : item.quantity;
       const newSizeStock = previousSizeStock + quantityChange;
 
-      nextTotalStock = Math.max(nextTotalStock + quantityChange, 0);
-      nextStockBySize = updateStockBySize(
-        nextStockBySize,
-        item.size,
-        newSizeStock
-      );
+      if (usesVariantStock) {
+        nextStockByVariant = {
+          ...nextStockByVariant,
+          [item.color]: {
+            ...(nextStockByVariant[item.color] ?? {}),
+            [item.size]: Math.max(newSizeStock, 0),
+          },
+        };
+        nextStockBySize = stockByVariantToStockBySize(
+          nextStockByVariant,
+          productSizes
+        );
+        nextTotalStock = sumStockByVariant(nextStockByVariant);
+      } else {
+        nextTotalStock = Math.max(nextTotalStock + quantityChange, 0);
+        nextStockBySize = updateStockBySize(
+          nextStockBySize,
+          item.size,
+          newSizeStock
+        );
+      }
 
       const movementRef = doc(
         collection(firestore, STOCK_MOVEMENTS_COLLECTION)
@@ -183,7 +246,11 @@ export async function applyInventoryChangesInTransaction(
         type: context.type,
         productId: item.productId,
         productName: item.productName,
+        color: item.color,
         size: item.size,
+        previousQuantity: previousSizeStock,
+        newQuantity: Math.max(newSizeStock, 0),
+        difference: quantityChange,
         quantityChange,
         previousStock: previousSizeStock,
         newStock: Math.max(newSizeStock, 0),
@@ -198,7 +265,109 @@ export async function applyInventoryChangesInTransaction(
     transaction.update(productRefs[index], {
       stock: nextTotalStock,
       stockBySize: nextStockBySize,
+      ...(usesVariantStock ? { stockByVariant: nextStockByVariant } : {}),
       updatedAt: serverTimestamp(),
     });
+  });
+}
+
+function ensureFirebaseConfigured(firestore: Firestore | null) {
+  if (!firestore) {
+    throw new Error("La tienda no esta conectada.");
+  }
+
+  return firestore;
+}
+
+export async function adjustProductInventory(
+  firestore: Firestore | null,
+  adjustment: InventoryAdjustmentInput
+) {
+  const database = ensureFirebaseConfigured(firestore);
+  const productRef = doc(database, PRODUCTS_COLLECTION, adjustment.productId);
+
+  await runTransaction(database, async (transaction) => {
+      const productSnapshot = await transaction.get(productRef);
+
+      if (!productSnapshot.exists()) {
+        throw new Error("No encontramos inventario para este producto.");
+      }
+
+      const productData = productSnapshot.data() as Partial<FirebaseProduct>;
+      let nextStockBySize = normalizeStockBySize(productData.stockBySize);
+      const usesVariantStock = hasStoredStockByVariant(productData.stockByVariant);
+      const productColors = productData.colors?.length ? productData.colors : ["Sin color"];
+      const productSizes =
+        productData.sizes?.length
+          ? productData.sizes
+          : nextStockBySize.length > 0
+            ? nextStockBySize.map((item) => item.size)
+            : ["Unitalla"];
+      let nextStockByVariant = normalizeStockByVariant(
+        productData.stockByVariant,
+        productColors,
+        productSizes,
+        nextStockBySize,
+        productData.stock ?? 0
+      );
+      const color = getVariantKey(adjustment.color);
+      const previousStock = usesVariantStock
+        ? Math.max(nextStockByVariant[color]?.[adjustment.size] ?? 0, 0)
+        : getStockForSize(productData, nextStockBySize, adjustment.size);
+      const nextQuantity =
+        adjustment.mode === "set"
+          ? Math.max(Math.floor(adjustment.quantity), 0)
+          : Math.max(previousStock + Math.floor(adjustment.quantity), 0);
+      const difference = nextQuantity - previousStock;
+      let nextTotalStock = getStockTotal(productData);
+
+      if (usesVariantStock) {
+        nextStockByVariant = {
+          ...nextStockByVariant,
+          [color]: {
+            ...(nextStockByVariant[color] ?? {}),
+            [adjustment.size]: nextQuantity,
+          },
+        };
+        nextStockBySize = stockByVariantToStockBySize(
+          nextStockByVariant,
+          productSizes
+        );
+        nextTotalStock = sumStockByVariant(nextStockByVariant);
+      } else {
+        nextStockBySize = updateStockBySize(
+          nextStockBySize,
+          adjustment.size,
+          nextQuantity
+        );
+        nextTotalStock = Math.max(getStockTotal(productData) + difference, 0);
+      }
+
+      const movementRef = doc(collection(database, STOCK_MOVEMENTS_COLLECTION));
+      transaction.set(movementRef, {
+        type: "inventory_adjustment",
+        productId: adjustment.productId,
+        productName: adjustment.productName,
+        color,
+        size: adjustment.size,
+        quantityChange: difference,
+        previousStock,
+        newStock: nextQuantity,
+        previousQuantity: previousStock,
+        newQuantity: nextQuantity,
+        difference,
+        reason: adjustment.reason,
+        orderId: "",
+        saleId: "",
+        note: adjustment.reason,
+        createdAt: serverTimestamp(),
+        createdBy: adjustment.createdBy ?? "admin",
+      });
+      transaction.update(productRef, {
+        stock: nextTotalStock,
+        stockBySize: nextStockBySize,
+        ...(usesVariantStock ? { stockByVariant: nextStockByVariant } : {}),
+        updatedAt: serverTimestamp(),
+      });
   });
 }

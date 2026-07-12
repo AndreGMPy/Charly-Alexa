@@ -1,6 +1,8 @@
 import {
   getAvailabilityLabel,
   getProductBadges,
+  getSectionLabels,
+  getSubcategoryLabels,
   type Product,
 } from "@/lib/products";
 import ProductImageFrame from "@/components/ProductImageFrame";
@@ -41,7 +43,9 @@ function normalizeText(text: string) {
 
 function getVisualKind(product: Product): VisualKind {
   const text = normalizeText(
-    `${product.name} ${product.category} ${product.subcategory}`
+    `${product.name} ${product.category} ${product.subcategory} ${
+      product.subcategories?.join(" ") ?? ""
+    }`
   );
 
   if (text.includes("fiesta")) return "party";
@@ -284,7 +288,8 @@ export default function ProductVisual({
         {!compact && (
           <div className="mb-2 inline-flex w-max items-center gap-1.5 rounded-full bg-white/92 px-2.5 py-1.5 text-[8px] font-black uppercase text-slate-700 shadow-sm backdrop-blur sm:px-3 sm:py-2 sm:text-[10px]">
             <Sparkles size={11} />
-            {product.category} · {product.subcategory}
+            {getSectionLabels(product) || product.category} ·{" "}
+            {getSubcategoryLabels(product) || product.subcategory}
           </div>
         )}
 

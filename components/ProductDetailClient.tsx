@@ -7,9 +7,10 @@ import {
   formatPrice,
   getAvailabilityLabel,
   getProductBadges,
-  getProductStockForSize,
+  getProductStockForColorAndSize,
   getSectionLabels,
-  isProductSizeAvailable,
+  getSubcategoryLabels,
+  isProductColorSizeAvailable,
   productAppearsInSection,
   type Product,
 } from "@/lib/products";
@@ -54,6 +55,7 @@ export default function ProductDetailClient({
   const addItem = useCartStore((state) => state.addItem);
 
   const [selectedVisual, setSelectedVisual] = useState(0);
+  const [selectedColor, setSelectedColor] = useState(product.colors[0] ?? "Sin color");
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [isSizeGuideOpen, setIsSizeGuideOpen] = useState(false);
@@ -66,11 +68,21 @@ export default function ProductDetailClient({
   const badges = getProductBadges(product).slice(0, 3);
   const totalVisuals = product.galleryGradients.length;
   const hasMultipleVisuals = totalVisuals > 1;
+  const activeSelectedColor = product.colors.includes(selectedColor)
+    ? selectedColor
+    : product.colors[0] ?? "Sin color";
   const wholesaleLabel = getWholesaleLabel(product, settings.wholesaleSettings);
   const wholesaleMode = normalizeWholesaleMode(product.wholesaleMode);
   const hasWholesale = Boolean(wholesaleLabel);
+  const hasWholesaleRun =
+    Boolean(product.wholesaleRunEnabled) &&
+    Boolean(product.wholesaleRunPrice && product.wholesaleRunPrice <= product.price);
+  const wholesaleRunSizes =
+    product.wholesaleRunSizes && product.wholesaleRunSizes.length > 0
+      ? product.wholesaleRunSizes
+      : product.sizes;
   const selectedSizeStock = selectedSize
-    ? getProductStockForSize(product, selectedSize)
+    ? getProductStockForColorAndSize(product, activeSelectedColor, selectedSize)
     : product.stock;
   const quantityLimit = Math.max(selectedSizeStock, 0);
 
@@ -197,15 +209,48 @@ export default function ProductDetailClient({
 
     if (!requireSize()) return;
 
-    if (getProductStockForSize(product, selectedSize) < quantity) {
-      toast.error("No hay suficientes piezas disponibles de esta talla.");
+    if (
+      getProductStockForColorAndSize(product, activeSelectedColor, selectedSize) <
+      quantity
+    ) {
+      toast.error("No hay suficientes piezas disponibles de este color y talla.");
       return;
     }
 
-    addItem(product, { quantity, selectedSize });
+    addItem(product, { quantity, selectedColor: activeSelectedColor, selectedSize });
 
     toast.success("Producto agregado al carrito", {
-      description: `${product.name} · Talla ${selectedSize}`,
+      description: `${product.name} · ${activeSelectedColor} · Talla ${selectedSize}`,
+    });
+  }
+
+  function handleAddWholesaleRun() {
+    if (!hasWholesaleRun) return;
+
+    if (isOutOfStock) {
+      toast.error("Producto agotado");
+      return;
+    }
+
+    const missingStock = wholesaleRunSizes.find(
+      (size) => getProductStockForColorAndSize(product, activeSelectedColor, size) < 1
+    );
+
+    if (missingStock) {
+      toast.error("No hay piezas suficientes para completar la corrida en este color.");
+      return;
+    }
+
+    wholesaleRunSizes.forEach((size) => {
+      addItem(product, {
+        selectedColor: activeSelectedColor,
+        selectedSize: size,
+        quantity: 1,
+      });
+    });
+
+    toast.success("Corrida agregada al carrito", {
+      description: `${activeSelectedColor}: ${wholesaleRunSizes.join(" + ")}`,
     });
   }
 
@@ -216,7 +261,8 @@ export default function ProductDetailClient({
 
 Producto: ${product.name}
 Categoría: ${product.category}
-Subcategoría: ${product.subcategory}
+Subcategoría: ${getSubcategoryLabels(product) || product.subcategory}
+Color: ${activeSelectedColor}
 Talla: ${selectedSize}
 Cantidad: ${quantity}
 Precio: ${formatPrice(product.price)}${hasWholesale ? `
@@ -324,7 +370,7 @@ Observaciones:`;
 
             <p className="text-[11px] font-black uppercase text-slate-400 sm:text-xs">
               {product.brand} · {getSectionLabels(product) || product.category} ·{" "}
-              {product.subcategory}
+              {getSubcategoryLabels(product) || product.subcategory}
             </p>
 
             <h1 className="mt-2 text-3xl font-black leading-[1] text-slate-950 sm:mt-3 sm:text-4xl lg:text-[2.7rem]">
@@ -346,16 +392,23 @@ Observaciones:`;
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-600">
-                      Mayoreo disponible
+                      {hasWholesaleRun ? "Mayoreo corrido disponible" : "Mayoreo disponible"}
                     </p>
                     <h2 className="mt-1 text-lg font-black text-slate-950">
                       {wholesaleLabel}
                     </h2>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 sm:text-sm">
-                      {wholesaleMode === "mixed"
-                        ? "Puedes combinar este producto con otros marcados como mayoreo surtido."
-                        : "El mínimo se completa con este mismo producto, aunque cambie la talla."}
+                      {hasWholesaleRun
+                        ? "Mayoreo corrido disponible: 1 pieza de cada talla del mismo color."
+                        : wholesaleMode === "mixed"
+                          ? "Este producto conserva una regla de mayoreo surtido heredada."
+                          : "El mínimo se completa con este mismo producto, aunque cambie la talla."}
                     </p>
+                    {hasWholesaleRun && (
+                      <p className="mt-2 text-xs font-black text-amber-700">
+                        Ej. {activeSelectedColor}: talla {wholesaleRunSizes.join(" + ")}
+                      </p>
+                    )}
                     {product.wholesaleNote && (
                       <p className="mt-2 text-xs font-black text-amber-700">
                         {product.wholesaleNote}
@@ -365,12 +418,12 @@ Observaciones:`;
 
                   <button
                     type="button"
-                    onClick={handleAddToCart}
+                    onClick={hasWholesaleRun ? handleAddWholesaleRun : handleAddToCart}
                     disabled={isOutOfStock}
                     className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-200 transition hover:scale-[1.02] hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     <ShoppingBag size={17} />
-                    Agregar al mayoreo
+                    {hasWholesaleRun ? "Agregar corrida" : "Agregar al mayoreo"}
                   </button>
                 </div>
               </div>
@@ -384,6 +437,35 @@ Observaciones:`;
             )}
 
             <div className="mt-5 rounded-[1.5rem] bg-white p-4 shadow-sm ring-1 ring-slate-100 sm:rounded-[1.75rem] sm:p-5">
+              <h2 className="text-base font-black">Selecciona el color</h2>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {product.colors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => {
+                      const nextSize =
+                        product.sizes.find(
+                          (size) =>
+                            getProductStockForColorAndSize(product, color, size) > 0
+                        ) ?? "";
+                      setSelectedColor(color);
+                      setSelectedSize(nextSize);
+                      setQuantity(1);
+                    }}
+                    className={`rounded-full px-4 py-2 text-xs font-black transition sm:px-4 sm:py-2.5 sm:text-sm ${
+                      activeSelectedColor === color
+                        ? "bg-slate-950 text-white shadow-lg"
+                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                    }`}
+                  >
+                    {color}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[1.5rem] bg-white p-4 shadow-sm ring-1 ring-slate-100 sm:rounded-[1.75rem] sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-black">Selecciona la talla</h2>
@@ -405,7 +487,11 @@ Observaciones:`;
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {product.sizes.map((size) => {
-                  const isAvailable = isProductSizeAvailable(product, size);
+                  const isAvailable = isProductColorSizeAvailable(
+                    product,
+                    activeSelectedColor,
+                    size
+                  );
 
                   return (
                     <button
@@ -415,7 +501,14 @@ Observaciones:`;
                         if (isAvailable) {
                           setSelectedSize(size);
                           setQuantity((value) =>
-                            Math.min(value, getProductStockForSize(product, size))
+                            Math.min(
+                              value,
+                              getProductStockForColorAndSize(
+                                product,
+                                activeSelectedColor,
+                                size
+                              )
+                            )
                           );
                         }
                       }}
@@ -554,8 +647,8 @@ Observaciones:`;
                 ? "No disponible"
                 : selectedSize
                   ? hasWholesale
-                    ? `Mayoreo · Talla ${selectedSize}`
-                    : `Talla ${selectedSize}`
+                    ? `Mayoreo · ${activeSelectedColor} · Talla ${selectedSize}`
+                    : `${activeSelectedColor} · Talla ${selectedSize}`
                   : "Elige una talla"}
             </p>
           </div>

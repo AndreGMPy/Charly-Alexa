@@ -11,6 +11,8 @@ import type { FirebaseProduct } from "@/lib/firebase-types";
 import {
   categoryToSection,
   isPublicStoreProduct,
+  normalizeProductSubcategories,
+  productMatchesSubcategory,
   productAppearsInSection,
   type Product,
 } from "@/lib/products";
@@ -39,6 +41,7 @@ const girlFilters: FilterOption[] = [
   "Fiesta",
   "Accesorios",
   "Chamarras",
+  "Unisex",
 ];
 
 const boyFilters: FilterOption[] = [
@@ -50,6 +53,9 @@ const boyFilters: FilterOption[] = [
   "Pantalones",
   "Chamarras",
   "Accesorios",
+  "Shorts",
+  "Sudaderas",
+  "Unisex",
 ];
 
 const sizes = ["1", "2", "4", "6", "8", "10", "12", "14", "16"];
@@ -200,7 +206,19 @@ export default function GenderProductSection({
               name !== "Todos" && name !== "Novedades" && name !== "Ofertas"
           );
 
-        const uniqueNames = Array.from(new Set(activeNames));
+        const productNames = catalogProducts.flatMap((product) =>
+          normalizeProductSubcategories(product)
+        );
+        const fallbackFilters = title === "Niña" ? girlFilters : boyFilters;
+        const uniqueNames = Array.from(
+          new Set([
+            ...fallbackFilters.filter(
+              (name) => name !== "Todos" && name !== "Novedades" && name !== "Ofertas"
+            ),
+            ...activeNames,
+            ...productNames,
+          ])
+        );
 
         if (!isCurrent || uniqueNames.length === 0) return;
 
@@ -215,7 +233,7 @@ export default function GenderProductSection({
     return () => {
       isCurrent = false;
     };
-  }, [title]);
+  }, [catalogProducts, title]);
 
   useEffect(() => {
     if (!showMobileFilters) return;
@@ -241,7 +259,7 @@ export default function GenderProductSection({
         activeFilter === "Todos" ||
         (activeFilter === "Ofertas" && product.isOffer) ||
         (activeFilter === "Novedades" && product.isNew) ||
-        product.subcategory === activeFilter;
+        productMatchesSubcategory(product, activeFilter);
 
       const matchesSize =
         activeSize === "Todas" || product.sizes.includes(activeSize);

@@ -27,12 +27,21 @@ import {
   categoryToSection,
   formatPrice,
   getSectionLabels,
+  getSubcategoryLabels,
+  normalizeProductSections,
+  normalizeProductSubcategories,
   primaryCategoryFromSections,
   sectionOptions,
   subcategories as commonProductTypes,
 } from "@/lib/products";
 import { normalizeWholesaleMode } from "@/lib/wholesale";
 import {
+  normalizeStockQuantity,
+  normalizeStockByVariant as normalizeProductStockByVariant,
+  stockByVariantToStockBySize,
+} from "@/lib/variant-utils";
+import {
+  AlertTriangle,
   BadgePercent,
   ChevronDown,
   DollarSign,
@@ -58,6 +67,7 @@ type ProductFormProps = {
 
 type HomeSectionValue = Exclude<HomeSection, null> | "";
 type StockBySizeFormValue = Record<string, string>;
+type StockByVariantFormValue = Record<string, Record<string, string>>;
 
 type ProductFormValues = {
   name: string;
@@ -66,11 +76,13 @@ type ProductFormValues = {
   category: MainCategoryName;
   sections: ProductSection[];
   subcategory: string;
+  subcategories: string[];
   basePrice: string;
   paymentFeePercent: string;
   sizes: string;
   colors: string;
   stockBySize: StockBySizeFormValue;
+  stockByVariant: StockByVariantFormValue;
   mainImage: string;
   images: string;
   isOffer: boolean;
@@ -85,6 +97,9 @@ type ProductFormValues = {
   wholesalePrice: string;
   wholesaleMinQuantity: string;
   wholesaleNote: string;
+  wholesaleRunEnabled: boolean;
+  wholesaleRunPrice: string;
+  wholesaleRunSizes: string[];
 };
 
 type BooleanField = "isOffer" | "isNew" | "isSeasonal" | "isActive";
@@ -92,46 +107,67 @@ type ProductFormStep = "photos" | "data" | "price" | "sale" | "review";
 
 type ProductTemplate = {
   label: string;
-  category: MainCategoryName;
-  subcategory: string;
+  sections: ProductSection[];
+  subcategories: string[];
   sizes: string[];
 };
 
 const productTemplates: ProductTemplate[] = [
   {
     label: "Vestido",
-    category: "Niña",
-    subcategory: "Vestidos",
+    sections: ["nina"],
+    subcategories: ["Vestidos"],
     sizes: ["1", "2", "4", "6", "8", "10", "12"],
   },
   {
     label: "Conjunto",
-    category: "Unisex",
-    subcategory: "Conjuntos",
+    sections: ["nina"],
+    subcategories: ["Conjuntos", "Unisex"],
     sizes: ["1", "2", "4", "6", "8", "10", "12", "14"],
   },
   {
     label: "Playera",
-    category: "Unisex",
-    subcategory: "Playeras",
+    sections: ["nina"],
+    subcategories: ["Playeras", "Unisex"],
     sizes: ["2", "4", "6", "8", "10", "12", "14", "16"],
   },
   {
     label: "Pantalón",
-    category: "Unisex",
-    subcategory: "Pantalones",
+    sections: ["nino"],
+    subcategories: ["Pantalones"],
     sizes: ["2", "4", "6", "8", "10", "12", "14", "16"],
   },
   {
     label: "Chamarra",
-    category: "Unisex",
-    subcategory: "Chamarras",
+    sections: ["nino"],
+    subcategories: ["Chamarras", "Unisex"],
     sizes: ["2", "4", "6", "8", "10", "12", "14", "16"],
   },
 ];
 
-const defaultSizes = ["1", "2", "4", "6", "8"];
-const quickSizeOptions = ["1", "2", "4", "6", "8", "10", "12", "14", "16"];
+const defaultSizes: string[] = [];
+const quickSizeOptions = [
+  "1",
+  "2",
+  "4",
+  "6",
+  "8",
+  "10",
+  "12",
+  "14",
+  "16",
+  "CH",
+  "M",
+  "G",
+  "XG",
+  "RN",
+  "0-3M",
+  "3-6M",
+  "6-12M",
+  "12-18M",
+  "18-24M",
+  "Unitalla",
+];
 
 function getSubcategorySourceCategories(
   sections: ProductSection[],
@@ -150,7 +186,23 @@ function getSubcategorySourceCategories(
   return ["Niña", "Niño"];
 }
 
-function getSubcategoryFormOptions(items: FirebaseSubcategory[]) {
+function getFallbackSubcategoryOptions(category: MainCategoryName) {
+  return commonProductTypes.map((name, index) => ({
+    id: `common-${createSlug(name)}`,
+    name,
+    slug: createSlug(name),
+    parentCategory: category,
+    isActive: true,
+    sortOrder: index + 1,
+    createdAt: "",
+    updatedAt: "",
+  }));
+}
+
+function getSubcategoryFormOptions(
+  items: FirebaseSubcategory[],
+  fallbackCategory: MainCategoryName
+) {
   const uniqueItems = new Map<string, FirebaseSubcategory>();
 
   for (const item of items) {
@@ -159,22 +211,15 @@ function getSubcategoryFormOptions(items: FirebaseSubcategory[]) {
     uniqueItems.set(key, item);
   }
 
-  const savedOptions = Array.from(uniqueItems.values()).sort((a, b) =>
+  for (const fallbackOption of getFallbackSubcategoryOptions(fallbackCategory)) {
+    const key = fallbackOption.name.trim().toLowerCase();
+    if (!key || uniqueItems.has(key)) continue;
+    uniqueItems.set(key, fallbackOption);
+  }
+
+  return Array.from(uniqueItems.values()).sort((a, b) =>
     a.name.localeCompare(b.name, "es-MX")
   );
-
-  if (savedOptions.length > 0) return savedOptions;
-
-  return commonProductTypes.map((name, index) => ({
-    id: `common-${createSlug(name)}`,
-    name,
-    slug: createSlug(name),
-    parentCategory: (index % 2 === 0 ? "Niña" : "Niño") as MainCategoryName,
-    isActive: true,
-    sortOrder: index + 1,
-    createdAt: "",
-    updatedAt: "",
-  }));
 }
 
 const productFormSteps: Array<{
@@ -183,27 +228,32 @@ const productFormSteps: Array<{
   helper: string;
 }> = [
   { id: "photos", label: "Fotos", helper: "Agrega la foto principal del producto." },
-  { id: "data", label: "Datos", helper: "Nombre, sección y textos de la prenda." },
-  { id: "price", label: "Precio", helper: "Precio final, tallas y piezas." },
-  { id: "sale", label: "Venta", helper: "Visibilidad, mayoreo y destacados." },
+  { id: "data", label: "Datos", helper: "Nombre, categorías y textos de la prenda." },
+  { id: "price", label: "Precio", helper: "Precio final, stock y mayoreo corrido." },
+  { id: "sale", label: "Venta", helper: "Visibilidad y destacados." },
   { id: "review", label: "Revisar", helper: "Confirma el resumen antes de guardar." },
 ];
 
 function getInitialValues(category: MainCategoryName = "Niña"): ProductFormValues {
   const initialSection = categoryToSection(category) ?? "nina";
+  const initialSections: ProductSection[] =
+    initialSection === "unisex" ? ["nina", "nino"] : [initialSection];
+  const initialCategory = primaryCategoryFromSections(initialSections, "Niña");
 
   return {
     name: "",
     description: "",
     longDescription: "",
-    category,
-    sections: [initialSection],
+    category: initialCategory,
+    sections: initialSections,
     subcategory: "",
+    subcategories: [],
     basePrice: "",
     paymentFeePercent: String(DEFAULT_PAYMENT_FEE_PERCENT),
-    sizes: defaultSizes.join(", "),
+    sizes: "",
     colors: "Varios",
     stockBySize: createEmptyStockBySize(defaultSizes),
+    stockByVariant: createEmptyStockByVariant(["Varios"], defaultSizes),
     mainImage: "",
     images: "",
     isOffer: false,
@@ -218,6 +268,9 @@ function getInitialValues(category: MainCategoryName = "Niña"): ProductFormValu
     wholesalePrice: "",
     wholesaleMinQuantity: "",
     wholesaleNote: "",
+    wholesaleRunEnabled: false,
+    wholesaleRunPrice: "",
+    wholesaleRunSizes: defaultSizes,
   };
 }
 
@@ -274,9 +327,90 @@ function parseList(value: string) {
     .filter(Boolean);
 }
 
+function sortSizesByQuickOrder(values: string[]) {
+  return [...values].sort((a, b) => {
+    const aIndex = quickSizeOptions.indexOf(a);
+    const bIndex = quickSizeOptions.indexOf(b);
+
+    if (aIndex === -1 && bIndex === -1) {
+      return a.localeCompare(b, "es-MX", { numeric: true });
+    }
+
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+}
+
+function getProductSizesForForm(product: FirebaseProduct) {
+  if (product.sizes.length > 0) return product.sizes;
+
+  const stockSizes = Array.from(
+    new Set(
+      product.stockBySize
+        .map((item) => item.size?.trim())
+        .filter((size): size is string => Boolean(size))
+    )
+  );
+
+  if (stockSizes.length > 0) return stockSizes;
+  if (product.stock > 0) return ["Unitalla"];
+  return defaultSizes;
+}
+
 function createEmptyStockBySize(sizes: string[]) {
   return sizes.reduce<StockBySizeFormValue>((values, size) => {
     values[size] = "0";
+    return values;
+  }, {});
+}
+
+function createEmptyStockByVariant(colors: string[], sizes: string[]) {
+  const safeColors = colors.length > 0 ? colors : ["Sin color"];
+  const safeSizes = sizes.length > 0 ? sizes : ["Unitalla"];
+
+  return safeColors.reduce<StockByVariantFormValue>((values, color) => {
+    values[color] = safeSizes.reduce<Record<string, string>>((sizeValues, size) => {
+      sizeValues[size] = "0";
+      return sizeValues;
+    }, {});
+    return values;
+  }, {});
+}
+
+function normalizeStockByVariantForm(
+  stockByVariant: StockByVariantFormValue,
+  colors: string[],
+  sizes: string[]
+) {
+  const safeColors = colors.length > 0 ? colors : ["Sin color"];
+  const safeSizes = sizes.length > 0 ? sizes : ["Unitalla"];
+
+  return safeColors.reduce<StockByVariantFormValue>((values, color) => {
+    values[color] = safeSizes.reduce<Record<string, string>>((sizeValues, size) => {
+      sizeValues[size] = stockByVariant[color]?.[size] ?? "0";
+      return sizeValues;
+    }, {});
+    return values;
+  }, {});
+}
+
+function stockByVariantToFormValue(product: FirebaseProduct) {
+  const sizes = getProductSizesForForm(product);
+  const colors = product.colors.length > 0 ? product.colors : ["Sin color"];
+  const stockByVariant = normalizeProductStockByVariant(
+    product.stockByVariant,
+    colors,
+    sizes,
+    product.stockBySize,
+    product.stock
+  );
+
+  return colors.reduce<StockByVariantFormValue>((values, color) => {
+    values[color] = sizes.reduce<Record<string, string>>((sizeValues, size) => {
+      sizeValues[size] = String(stockByVariant[color]?.[size] ?? 0);
+      return sizeValues;
+    }, {});
     return values;
   }, {});
 }
@@ -313,38 +447,69 @@ function stockBySizeToMap(product: FirebaseProduct) {
 }
 
 function getStockQuantity(value: string) {
-  const quantity = Number(value);
-  return Number.isFinite(quantity) && quantity > 0 ? Math.floor(quantity) : 0;
+  return normalizeStockQuantity(value);
 }
 
-function sumStock(stockBySize: StockBySizeFormValue, sizes: string[]) {
-  return sizes.reduce(
-    (total, size) => total + getStockQuantity(stockBySize[size] ?? "0"),
+function sumStockByVariantForm(
+  stockByVariant: StockByVariantFormValue,
+  colors: string[],
+  sizes: string[]
+) {
+  return colors.reduce(
+    (colorTotal, color) =>
+      colorTotal +
+      sizes.reduce(
+        (sizeTotal, size) =>
+          sizeTotal + getStockQuantity(stockByVariant[color]?.[size] ?? "0"),
+        0
+      ),
     0
   );
 }
 
+function formStockByVariantToNumbers(
+  stockByVariant: StockByVariantFormValue,
+  colors: string[],
+  sizes: string[]
+) {
+  return colors.reduce<Record<string, Record<string, number>>>((values, color) => {
+    values[color] = sizes.reduce<Record<string, number>>((sizeValues, size) => {
+      sizeValues[size] = getStockQuantity(stockByVariant[color]?.[size] ?? "0");
+      return sizeValues;
+    }, {});
+    return values;
+  }, {});
+}
+
+function getProductFormSections(product: {
+  sections?: unknown;
+  category?: MainCategoryName | string | null;
+}): ProductSection[] {
+  const sections = normalizeProductSections(product);
+  const firstSection = sections.find(
+    (section) => section === "nina" || section === "nino"
+  );
+
+  return firstSection ? [firstSection] : ["nina"];
+}
+
 function productToFormValues(product: FirebaseProduct): ProductFormValues {
-  const sizes = product.sizes.length > 0 ? product.sizes : defaultSizes;
-  const sections = product.sections?.length
-    ? product.sections
-    : [categoryToSection(product.category) ?? "unisex"];
+  const sizes = getProductSizesForForm(product);
+  const sections = getProductFormSections(product);
+  const subcategories = normalizeProductSubcategories(product);
   const primaryCategory = primaryCategoryFromSections(
     sections,
-    product.category
-  );
-  const [subcategorySourceCategory = "Niña"] = getSubcategorySourceCategories(
-    sections,
-    primaryCategory
+    "Niña"
   );
 
   return {
     name: product.name,
     description: product.description,
     longDescription: product.longDescription,
-    category: subcategorySourceCategory,
+    category: primaryCategory,
     sections,
-    subcategory: product.subcategory,
+    subcategory: subcategories[0] ?? product.subcategory,
+    subcategories,
     basePrice: String(product.basePrice ?? product.price ?? ""),
     paymentFeePercent: String(
       product.paymentFeePercent ?? DEFAULT_PAYMENT_FEE_PERCENT
@@ -352,6 +517,7 @@ function productToFormValues(product: FirebaseProduct): ProductFormValues {
     sizes: sizes.join(", "),
     colors: product.colors.join(", "),
     stockBySize: stockBySizeToMap(product),
+    stockByVariant: stockByVariantToFormValue(product),
     mainImage: product.mainImage ?? "",
     images: product.images.join(", "),
     isOffer: product.isOffer,
@@ -368,6 +534,14 @@ function productToFormValues(product: FirebaseProduct): ProductFormValues {
       ? String(product.wholesaleMinQuantity)
       : "",
     wholesaleNote: product.wholesaleNote ?? "",
+    wholesaleRunEnabled: Boolean(product.wholesaleRunEnabled),
+    wholesaleRunPrice: product.wholesaleRunPrice
+      ? String(product.wholesaleRunPrice)
+      : "",
+    wholesaleRunSizes:
+      product.wholesaleRunSizes && product.wholesaleRunSizes.length > 0
+        ? product.wholesaleRunSizes
+        : sizes,
   };
 }
 
@@ -469,21 +643,17 @@ export default function ProductForm({
 
   const isEditing = Boolean(productToEdit);
   const sizes = useMemo(() => parseList(form.sizes), [form.sizes]);
+  const colors = useMemo(() => parseList(form.colors), [form.colors]);
   const images = useMemo(() => parseList(form.images), [form.images]);
   const productPhotoUrls = useMemo(() => {
     const urls = [form.mainImage.trim(), ...images].filter(Boolean);
     return Array.from(new Set(urls));
   }, [form.mainImage, images]);
   const totalStock = useMemo(
-    () => sumStock(form.stockBySize, sizes),
-    [form.stockBySize, sizes]
+    () => sumStockByVariantForm(form.stockByVariant, colors, sizes),
+    [colors, form.stockByVariant, sizes]
   );
-  const canWriteTemporarySubcategory =
-    !isLoadingSubcategories && subcategories.length === 0;
   const previewImage = productPhotoUrls[0] || "";
-  const selectedSubcategoryExists = subcategories.some(
-    (item) => item.name === form.subcategory
-  );
   const subcategorySourceCategories = useMemo(
     () => getSubcategorySourceCategories(form.sections, form.category),
     [form.category, form.sections]
@@ -511,6 +681,154 @@ export default function ProductForm({
     sections: form.sections,
     category: form.category,
   });
+  const selectedSubcategoryLabels = getSubcategoryLabels({
+    subcategories: form.subcategories,
+    subcategory: form.subcategory,
+    sections: form.sections,
+    category: form.category,
+  });
+  const sectionsForSave = useMemo(
+    () =>
+      getProductFormSections({
+        sections: form.sections,
+        category: form.category,
+      }).slice(0, 1),
+    [form.category, form.sections]
+  );
+  const selectedSubcategories = useMemo(
+    () =>
+      normalizeProductSubcategories({
+        subcategories: form.subcategories,
+        subcategory: form.subcategory,
+        sections: sectionsForSave,
+      }).slice(0, 3),
+    [form.subcategories, form.subcategory, sectionsForSave]
+  );
+  const selectedSubcategory = selectedSubcategories[0]?.trim() ?? "";
+  const primaryCategory = useMemo(
+    () => primaryCategoryFromSections(sectionsForSave, form.category),
+    [form.category, sectionsForSave]
+  );
+  const wholesaleMode = useMemo(
+    () => normalizeWholesaleMode(form.wholesaleMode),
+    [form.wholesaleMode]
+  );
+  const wholesaleRunPriceValue = form.wholesaleRunPrice.trim()
+    ? Number(form.wholesaleRunPrice)
+    : null;
+  const normalizedWholesaleRunSizes = useMemo(
+    () =>
+      sortSizesByQuickOrder(
+        form.wholesaleRunSizes.filter((size) => sizes.includes(size))
+      ),
+    [form.wholesaleRunSizes, sizes]
+  );
+  const normalizedStockByVariant = useMemo(
+    () => formStockByVariantToNumbers(form.stockByVariant, colors, sizes),
+    [colors, form.stockByVariant, sizes]
+  );
+  const normalizedStockBySize = useMemo(
+    () => stockByVariantToStockBySize(normalizedStockByVariant, sizes),
+    [normalizedStockByVariant, sizes]
+  );
+  const stockSummaryLabel =
+    sizes.length === 0 || colors.length === 0
+      ? "Se calcularán al capturar stock"
+      : totalStock > 0
+        ? String(totalStock)
+        : "0 — falta capturar stock";
+  const wholesaleRunPriceError =
+    form.wholesaleRunEnabled &&
+    (
+      wholesaleRunPriceValue === null ||
+      !Number.isFinite(wholesaleRunPriceValue) ||
+      wholesaleRunPriceValue <= 0 ||
+      (finalCustomerPrice > 0 && wholesaleRunPriceValue > finalCustomerPrice)
+    )
+      ? "Agrega un precio de mayoreo menor o igual al precio normal."
+      : "";
+  const reviewWarnings = useMemo(() => {
+    const warnings = new Set<string>();
+
+    if (!form.name.trim()) {
+      warnings.add("Agrega el nombre del producto.");
+    }
+
+    if (sectionsForSave.length === 0) {
+      warnings.add("Elige al menos una categoría donde aparecerá.");
+    }
+
+    if (!selectedSubcategory) {
+      warnings.add("Elige al menos una subcategoría.");
+    }
+
+    if (!Number.isFinite(basePriceValue) || basePriceValue <= 0) {
+      warnings.add("Agrega un precio base válido.");
+    }
+
+    if (
+      !Number.isFinite(paymentFeePercentValue) ||
+      paymentFeePercentValue < MIN_PAYMENT_FEE_PERCENT ||
+      paymentFeePercentValue > MAX_PAYMENT_FEE_PERCENT
+    ) {
+      warnings.add("Agrega un porcentaje entre 0 y 20.");
+    }
+
+    if (!Number.isFinite(finalCustomerPrice) || finalCustomerPrice <= 0) {
+      warnings.add("Revisa el precio final al cliente.");
+    }
+
+    if (!productPhotoUrls[0]) {
+      warnings.add("Te falta agregar una foto principal.");
+    }
+
+    if (sizes.length === 0) {
+      warnings.add("Selecciona al menos una talla real para este producto.");
+    }
+
+    if (colors.length === 0) {
+      warnings.add("Agrega al menos un color.");
+    }
+
+    if (sizes.length > 0 && colors.length > 0 && totalStock <= 0) {
+      warnings.add(
+        "Captura el stock por color y talla para calcular las piezas disponibles."
+      );
+    }
+
+    if (form.showOnHome && !form.homeSection) {
+      warnings.add("Elige en qué sección del inicio aparecerá.");
+    }
+
+    if (form.wholesaleRunEnabled) {
+      if (wholesaleRunPriceError) {
+        warnings.add(wholesaleRunPriceError);
+      }
+
+      if (normalizedWholesaleRunSizes.length === 0) {
+        warnings.add("Elige las tallas que forman la corrida.");
+      }
+    }
+
+    return Array.from(warnings);
+  }, [
+    basePriceValue,
+    colors.length,
+    finalCustomerPrice,
+    form.homeSection,
+    form.name,
+    form.showOnHome,
+    form.wholesaleRunEnabled,
+    normalizedWholesaleRunSizes.length,
+    paymentFeePercentValue,
+    productPhotoUrls,
+    sectionsForSave.length,
+    selectedSubcategory,
+    sizes.length,
+    totalStock,
+    wholesaleRunPriceError,
+  ]);
+  const canSaveProduct = reviewWarnings.length === 0 && !isSaving;
 
   const previewProduct = useMemo(() => {
     const product: FirebaseProduct = {
@@ -526,16 +844,15 @@ export default function ProductForm({
       category: form.category,
       sections: form.sections,
       subcategory: form.subcategory.trim() || "Subcategoría",
+      subcategories: form.subcategories,
       price: finalCustomerPrice,
       basePrice: Number(form.basePrice) || undefined,
       paymentFeePercent: Number(form.paymentFeePercent) || 0,
       sizes: sizes.length > 0 ? sizes : ["Unitalla"],
-      colors: parseList(form.colors),
+      colors,
       stock: totalStock,
-      stockBySize: sizes.map((size) => ({
-        size,
-        stock: getStockQuantity(form.stockBySize[size] ?? "0"),
-      })),
+      stockBySize: normalizedStockBySize,
+      stockByVariant: normalizedStockByVariant,
       images: productPhotoUrls.slice(1),
       mainImage: previewImage,
       isOffer: form.isOffer,
@@ -551,6 +868,11 @@ export default function ProductForm({
       wholesalePrice: Number(form.wholesalePrice) || null,
       wholesaleMinQuantity: Number(form.wholesaleMinQuantity) || 0,
       wholesaleNote: form.wholesaleNote,
+      wholesaleRunEnabled: form.wholesaleRunEnabled,
+      wholesaleRunPrice: wholesaleRunPriceValue,
+      wholesaleRunSizes: form.wholesaleRunEnabled
+        ? normalizedWholesaleRunSizes
+        : [],
       createdAt: "",
       updatedAt: "",
     };
@@ -559,11 +881,16 @@ export default function ProductForm({
   }, [
     finalCustomerPrice,
     form,
+    colors,
+    normalizedStockBySize,
+    normalizedStockByVariant,
+    normalizedWholesaleRunSizes,
     previewImage,
     productPhotoUrls,
     productToEdit?.id,
     sizes,
     totalStock,
+    wholesaleRunPriceValue,
   ]);
 
   const imageStorageFolder = useMemo(() => {
@@ -595,25 +922,38 @@ export default function ProductForm({
         const sourceCategories = subcategorySourceKey
           .split("|")
           .filter(Boolean) as MainCategoryName[];
+        const fallbackCategory = sourceCategories[0] ?? form.category;
+
         const categoryItems = await Promise.all(
           sourceCategories.map((category) => getSubcategoriesByCategory(category))
         );
         const items = categoryItems.flat();
         const selectableItems = items.filter(
-          (item) => item.isActive || item.name === form.subcategory
+          (item) => item.isActive || form.subcategories.includes(item.name)
         );
-        const formOptions = getSubcategoryFormOptions(selectableItems);
+        const formOptions = getSubcategoryFormOptions(
+          selectableItems,
+          fallbackCategory
+        );
 
         if (!isCurrent) return;
 
         setSubcategories(formOptions);
         setForm((current) => {
-          if (current.subcategory || formOptions.length === 0) return current;
-          return { ...current, subcategory: formOptions[0].name };
+          if (current.subcategories.length > 0 || formOptions.length === 0) {
+            return current;
+          }
+
+          const [firstOption] = formOptions;
+          return {
+            ...current,
+            subcategory: firstOption.name,
+            subcategories: [firstOption.name],
+          };
         });
       } catch {
         if (isCurrent) {
-          setSubcategories(getSubcategoryFormOptions([]));
+          setSubcategories(getSubcategoryFormOptions([], form.category));
         }
       } finally {
         if (isCurrent) {
@@ -627,7 +967,7 @@ export default function ProductForm({
     return () => {
       isCurrent = false;
     };
-  }, [form.subcategory, subcategorySourceKey]);
+  }, [form.category, form.subcategories, subcategorySourceKey]);
 
   function updateField<Field extends keyof ProductFormValues>(
     field: Field,
@@ -636,35 +976,76 @@ export default function ProductForm({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function toggleSection(section: ProductSection) {
+  function selectSection(section: ProductSection) {
     setForm((current) => {
-      const hasSection = current.sections.includes(section);
-      const nextSections = hasSection
-        ? current.sections.filter((item) => item !== section)
-        : [...current.sections, section];
-      const safeSections = nextSections.length > 0 ? nextSections : [section];
+      const nextSections = [section];
       const nextCategory = primaryCategoryFromSections(
-        safeSections,
+        nextSections,
         current.category
       );
 
       return {
         ...current,
-        sections: safeSections,
+        sections: nextSections,
         category: nextCategory,
-        subcategory:
-          nextCategory === current.category ? current.subcategory : "",
+      };
+    });
+  }
+
+  function toggleSubcategory(subcategory: string) {
+    setForm((current) => {
+      const hasSubcategory = current.subcategories.includes(subcategory);
+      const nextSubcategories = hasSubcategory
+        ? current.subcategories.filter((item) => item !== subcategory)
+        : [...current.subcategories, subcategory];
+
+      if (!hasSubcategory && current.subcategories.length >= 3) {
+        toast.error("Solo puedes seleccionar hasta 3 subcategorías.");
+        return current;
+      }
+
+      if (nextSubcategories.length === 0) {
+        return current;
+      }
+
+      return {
+        ...current,
+        subcategories: nextSubcategories,
+        subcategory: nextSubcategories[0] ?? "",
       };
     });
   }
 
   function updateSizes(value: string) {
-    const nextSizes = parseList(value);
+    const nextSizes = sortSizesByQuickOrder(parseList(value));
 
     setForm((current) => ({
       ...current,
-      sizes: value,
+      sizes: nextSizes.join(", "),
       stockBySize: normalizeStockBySize(current.stockBySize, nextSizes),
+      stockByVariant: normalizeStockByVariantForm(
+        current.stockByVariant,
+        parseList(current.colors),
+        nextSizes
+      ),
+      wholesaleRunSizes:
+        current.wholesaleRunSizes.length > 0
+          ? current.wholesaleRunSizes.filter((size) => nextSizes.includes(size))
+          : nextSizes,
+    }));
+  }
+
+  function updateColors(value: string) {
+    const nextColors = parseList(value);
+
+    setForm((current) => ({
+      ...current,
+      colors: value,
+      stockByVariant: normalizeStockByVariantForm(
+        current.stockByVariant,
+        nextColors,
+        parseList(current.sizes)
+      ),
     }));
   }
 
@@ -688,16 +1069,31 @@ export default function ProductForm({
           },
           nextSizes
         ),
+        stockByVariant: normalizeStockByVariantForm(
+          current.stockByVariant,
+          parseList(current.colors),
+          nextSizes
+        ),
+        wholesaleRunSizes: hasSize
+          ? current.wholesaleRunSizes.filter((item) => item !== size)
+          : current.wholesaleRunSizes.length > 0
+            ? [...current.wholesaleRunSizes, size].sort(
+                (a, b) => quickSizeOptions.indexOf(a) - quickSizeOptions.indexOf(b)
+              )
+            : nextSizes,
       };
     });
   }
 
-  function updateSizeStock(size: string, value: string) {
+  function updateVariantStock(color: string, size: string, value: string) {
     setForm((current) => ({
       ...current,
-      stockBySize: {
-        ...current.stockBySize,
-        [size]: value,
+      stockByVariant: {
+        ...current.stockByVariant,
+        [color]: {
+          ...(current.stockByVariant[color] ?? {}),
+          [size]: value,
+        },
       },
     }));
   }
@@ -707,20 +1103,50 @@ export default function ProductForm({
 
     setForm((current) => ({
       ...current,
-      stockBySize: sizes.reduce<StockBySizeFormValue>((values, size) => {
-        values[size] = cleanQuantity;
+      stockByVariant: colors.reduce<StockByVariantFormValue>((values, color) => {
+        values[color] = sizes.reduce<Record<string, string>>((sizeValues, size) => {
+          sizeValues[size] = cleanQuantity;
+          return sizeValues;
+        }, {});
         return values;
       }, {}),
     }));
   }
 
+  function copyStockToAllColors() {
+    const [sourceColor] = colors;
+    if (!sourceColor) return;
+
+    setForm((current) => ({
+      ...current,
+      stockByVariant: colors.reduce<StockByVariantFormValue>((values, color) => {
+        values[color] = sizes.reduce<Record<string, string>>((sizeValues, size) => {
+          sizeValues[size] = current.stockByVariant[sourceColor]?.[size] ?? "0";
+          return sizeValues;
+        }, {});
+        return values;
+      }, {}),
+    }));
+  }
+
+  function toggleWholesaleRunSize(size: string) {
+    setForm((current) => {
+      const hasSize = current.wholesaleRunSizes.includes(size);
+      const nextSizes = hasSize
+        ? current.wholesaleRunSizes.filter((item) => item !== size)
+        : sortSizesByQuickOrder([...current.wholesaleRunSizes, size]);
+
+      return {
+        ...current,
+        wholesaleRunSizes: nextSizes,
+      };
+    });
+  }
+
   function clearStockQuantities() {
     setForm((current) => ({
       ...current,
-      stockBySize: sizes.reduce<StockBySizeFormValue>((values, size) => {
-        values[size] = "0";
-        return values;
-      }, {}),
+      stockByVariant: createEmptyStockByVariant(colors, sizes),
     }));
     setBulkStockQuantity("");
   }
@@ -736,15 +1162,21 @@ export default function ProductForm({
   }
 
   function applyTemplate(template: ProductTemplate) {
-    const templateSection = categoryToSection(template.category) ?? "unisex";
+    const templateCategory = primaryCategoryFromSections(
+      template.sections,
+      "Niña"
+    );
 
     setForm((current) => ({
       ...current,
-      category: template.category,
-      sections: [templateSection],
-      subcategory: template.subcategory,
+      category: templateCategory,
+      sections: template.sections,
+      subcategory: template.subcategories[0] ?? "",
+      subcategories: template.subcategories,
       sizes: template.sizes.join(", "),
       stockBySize: createEmptyStockBySize(template.sizes),
+      stockByVariant: createEmptyStockByVariant(parseList(current.colors), template.sizes),
+      wholesaleRunSizes: template.sizes,
     }));
   }
 
@@ -780,24 +1212,29 @@ export default function ProductForm({
     }
 
     setError("");
+    if (reviewWarnings.length > 0) {
+      setError(reviewWarnings[0] ?? "Revisa los datos del producto.");
+      return;
+    }
+
     const requestedSaveAction = saveActionRef.current;
 
     const basePrice = Number(form.basePrice);
     const paymentFeePercent = Number(form.paymentFeePercent);
     const price = calculateFinalCustomerPrice(basePrice, paymentFeePercent);
-    const sections =
-      form.sections.length > 0 ? form.sections : [categoryToSection(form.category) ?? "unisex"];
-    const primaryCategory = primaryCategoryFromSections(sections, form.category);
-    const wholesaleMode = normalizeWholesaleMode(form.wholesaleMode);
+    const sections = sectionsForSave;
+    const subcategory = selectedSubcategory;
     const wholesalePrice = form.wholesalePrice.trim()
       ? Number(form.wholesalePrice)
       : null;
     const wholesaleMinQuantity = form.wholesaleMinQuantity.trim()
       ? Number(form.wholesaleMinQuantity)
       : 0;
-    const colors = parseList(form.colors);
+    const wholesaleRunPrice = wholesaleRunPriceValue;
+    const wholesaleRunSizes = normalizedWholesaleRunSizes;
+    const stockByVariant = normalizedStockByVariant;
+    const stockBySize = normalizedStockBySize;
     const mainImage = productPhotoUrls[0] || "";
-    const subcategory = form.subcategory.trim();
     const featuredOrder = Number(form.featuredOrder) || productToEdit?.featuredOrder || 0;
 
     if (!form.name.trim()) {
@@ -805,13 +1242,18 @@ export default function ProductForm({
       return;
     }
 
-    if (!subcategory) {
-      setError("Elige una subcategoría o crea una nueva en Categorías.");
+    if (sections.length === 0) {
+      setError("Elige al menos una categoría donde aparecerá.");
       return;
     }
 
-    if (sections.length === 0) {
-      setError("Elige al menos una sección donde aparecerá.");
+    if (!subcategory) {
+      setError("Elige al menos una subcategoría.");
+      return;
+    }
+
+    if (selectedSubcategories.length > 3) {
+      setError("Solo puedes seleccionar hasta 3 subcategorías.");
       return;
     }
 
@@ -863,6 +1305,27 @@ export default function ProductForm({
       return;
     }
 
+    if (form.wholesaleRunEnabled) {
+      if (
+        wholesaleRunPrice === null ||
+        !Number.isFinite(wholesaleRunPrice) ||
+        wholesaleRunPrice <= 0
+      ) {
+        setError("Agrega un precio de mayoreo menor o igual al precio normal.");
+        return;
+      }
+
+      if (wholesaleRunPrice > price) {
+        setError("Agrega un precio de mayoreo menor o igual al precio normal.");
+        return;
+      }
+
+      if (wholesaleRunSizes.length === 0) {
+        setError("Elige las tallas que forman la corrida.");
+        return;
+      }
+    }
+
     if (
       wholesaleMode === "product" &&
       (!Number.isFinite(wholesaleMinQuantity) || wholesaleMinQuantity < 2)
@@ -883,16 +1346,15 @@ export default function ProductForm({
       category: primaryCategory,
       sections,
       subcategory,
+      subcategories: selectedSubcategories,
       price,
       basePrice,
       paymentFeePercent,
       sizes,
       colors,
       stock: totalStock,
-      stockBySize: sizes.map((size) => ({
-        size,
-        stock: getStockQuantity(form.stockBySize[size] ?? "0"),
-      })),
+      stockBySize,
+      stockByVariant,
       images: productPhotoUrls.slice(1),
       mainImage,
       isOffer: form.isOffer,
@@ -910,6 +1372,9 @@ export default function ProductForm({
         wholesaleMode === "product" ? wholesaleMinQuantity : 0,
       wholesaleNote:
         wholesaleMode === "none" ? "" : form.wholesaleNote.trim(),
+      wholesaleRunEnabled: form.wholesaleRunEnabled,
+      wholesaleRunPrice: form.wholesaleRunEnabled ? wholesaleRunPrice : null,
+      wholesaleRunSizes: form.wholesaleRunEnabled ? wholesaleRunSizes : [],
     };
 
     try {
@@ -1038,7 +1503,7 @@ export default function ProductForm({
                     Plantillas rápidas
                   </span>
                   <span className="mt-1 hidden text-xs font-semibold leading-5 text-slate-600 sm:block">
-                    Llena categoría, subcategoría y tallas disponibles.
+                    Llena categoría, subcategorías y tallas disponibles.
                   </span>
                 </span>
                 <ChevronDown
@@ -1054,7 +1519,7 @@ export default function ProductForm({
                     Plantillas rápidas
                   </p>
                   <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">
-                    Elige una para llenar secciones, tipo de prenda y tallas.
+                    Elige una para llenar categorías, subcategorías y tallas.
                   </p>
                 </div>
               </div>
@@ -1090,8 +1555,11 @@ export default function ProductForm({
               </label>
 
               <div className="space-y-2">
-                <span className={labelClass}>Secciones donde aparecerá</span>
-                <div className="flex min-w-0 flex-wrap gap-2">
+                <span className={labelClass}>Categoría donde aparecerá</span>
+                <div
+                  aria-label="Categoría donde aparecerá"
+                  className="flex min-w-0 flex-wrap gap-2"
+                >
                   {sectionOptions.map((section) => {
                     const isSelected = form.sections.includes(section.value);
 
@@ -1099,7 +1567,8 @@ export default function ProductForm({
                       <button
                         key={section.value}
                         type="button"
-                        onClick={() => toggleSection(section.value)}
+                        aria-pressed={isSelected}
+                        onClick={() => selectSection(section.value)}
                         className={`min-h-9 rounded-full px-3 py-2 text-xs font-black transition focus:outline-none focus:ring-4 focus:ring-rose-100 sm:min-h-10 sm:px-4 ${
                           isSelected
                             ? "bg-slate-950 text-white shadow-sm"
@@ -1112,53 +1581,52 @@ export default function ProductForm({
                   })}
                 </div>
                 <HelpText>
-                  Puede aparecer en una o varias secciones de la boutique.
+                  Elige si esta prenda aparecerá en Niña o Niño.
                 </HelpText>
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
-                  <span className={labelClass}>Tipo de prenda</span>
+                  <span className={labelClass}>Subcategorías</span>
                   <Link
                     href="/admin/categorias"
                     className="text-xs font-black text-rose-500 transition hover:text-rose-600"
                   >
-                    Agregar tipo
+                    Agregar subcategoría
                   </Link>
                 </div>
 
-                {canWriteTemporarySubcategory ? (
-                  <input
-                    value={form.subcategory}
-                    onChange={(event) =>
-                      updateField("subcategory", event.target.value)
-                    }
-                    className={fieldClass}
-                    placeholder="Ej. Vestidos"
-                  />
-                ) : (
-                  <select
-                    value={form.subcategory}
-                    onChange={(event) =>
-                      updateField("subcategory", event.target.value)
-                    }
-                    className={fieldClass}
-                    disabled={isLoadingSubcategories}
-                  >
-                    {isLoadingSubcategories && <option>Cargando...</option>}
-                    {form.subcategory && !selectedSubcategoryExists && (
-                      <option value={form.subcategory}>{form.subcategory}</option>
-                    )}
-                    {subcategories.map((subcategory) => (
-                      <option key={subcategory.id} value={subcategory.name}>
+                <div className="flex min-w-0 flex-wrap gap-2">
+                  {isLoadingSubcategories && (
+                    <span className="rounded-full bg-white px-3 py-2 text-xs font-black text-slate-400 ring-1 ring-rose-100">
+                      Cargando...
+                    </span>
+                  )}
+                  {subcategories.map((subcategory) => {
+                    const isSelected = form.subcategories.includes(
+                      subcategory.name
+                    );
+
+                    return (
+                      <button
+                        key={subcategory.id}
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => toggleSubcategory(subcategory.name)}
+                        className={`min-h-9 rounded-full px-3 py-2 text-xs font-black transition focus:outline-none focus:ring-4 focus:ring-rose-100 sm:min-h-10 sm:px-4 ${
+                          isSelected
+                            ? "bg-rose-500 text-white shadow-sm"
+                            : "bg-white text-slate-700 ring-1 ring-rose-100 hover:bg-rose-50"
+                        }`}
+                      >
                         {subcategory.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 <HelpText>
-                  Ej. Vestidos, Conjuntos, Chamarras, Playeras o Accesorios.
+                  Elige hasta 3 subcategorías que describan la prenda.
                 </HelpText>
               </div>
 
@@ -1166,7 +1634,7 @@ export default function ProductForm({
                 <span className={labelClass}>Colores disponibles</span>
                 <input
                   value={form.colors}
-                  onChange={(event) => updateField("colors", event.target.value)}
+                  onChange={(event) => updateColors(event.target.value)}
                   className={fieldClass}
                   placeholder="Ej. Rosa, blanco"
                 />
@@ -1236,7 +1704,9 @@ export default function ProductForm({
               </label>
 
               <label className="space-y-2">
-                <span className={labelClass}>Ajuste de pago</span>
+                <span className={labelClass}>
+                  Porcentaje para cubrir comisión (%)
+                </span>
                 <input
                   value={form.paymentFeePercent}
                   onChange={(event) =>
@@ -1247,7 +1717,7 @@ export default function ProductForm({
                   placeholder={`Ej. ${DEFAULT_PAYMENT_FEE_PERCENT}`}
                 />
                 <p className="text-[11px] font-semibold leading-4 text-slate-500 sm:text-xs sm:leading-5">
-                  Ej. 5 agrega 5% al precio final.
+                  Ej. 5 agrega 5% al precio final. El cliente solo verá el precio final.
                 </p>
               </label>
 
@@ -1272,10 +1742,16 @@ export default function ProductForm({
 
               <div className="space-y-2">
                 <span className={labelClass}>Piezas disponibles</span>
-                <div className="flex min-h-10 items-center rounded-xl border border-rose-100 bg-slate-50 px-3 text-base font-black text-slate-950 sm:min-h-12 sm:rounded-2xl sm:px-4 sm:text-lg">
-                  {totalStock}
+                <div
+                  className={`flex min-h-10 items-center rounded-xl border px-3 text-sm font-black sm:min-h-12 sm:rounded-2xl sm:px-4 sm:text-base ${
+                    totalStock > 0
+                      ? "border-rose-100 bg-slate-50 text-slate-950"
+                      : "border-amber-200 bg-amber-50 text-amber-800"
+                  }`}
+                >
+                  {stockSummaryLabel}
                 </div>
-                <HelpText>Suma automática de todas las tallas.</HelpText>
+                <HelpText>Suma automática de todos los colores y tallas.</HelpText>
               </div>
 
               <label className="space-y-2 lg:col-span-2">
@@ -1307,18 +1783,22 @@ export default function ProductForm({
                   placeholder="Ej. 1, 2, 4, 6, 8"
                 />
                 <p className="text-[11px] font-black text-slate-500 sm:text-xs">
-                  Tallas: {sizes.length > 0 ? sizes.join(", ") : "sin tallas"} · Piezas totales: {totalStock}
+                  Tallas: {sizes.length > 0 ? sizes.join(", ") : "sin tallas"} · Piezas totales: {stockSummaryLabel}
                 </p>
               </label>
             </div>
 
             <div className="mt-3 space-y-3 sm:mt-4">
               <CollapsibleBlock
-                title="Stock por talla"
-                description="Llena cuántas piezas hay de cada talla."
+                title="Stock por color y talla"
+                description="Captura existencias exactas por variante para calcular piezas disponibles."
+                defaultOpen
               >
-                {sizes.length > 0 ? (
+                {sizes.length > 0 && colors.length > 0 ? (
                   <div className="space-y-3 sm:space-y-4">
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-black leading-5 text-amber-900 sm:rounded-2xl sm:px-4 sm:py-3 sm:text-sm">
+                      Captura aquí el stock por color y talla. Las piezas disponibles se calculan automáticamente.
+                    </div>
                     <div className="rounded-xl bg-white p-2.5 ring-1 ring-rose-100 sm:rounded-2xl sm:p-3">
                       <label className="space-y-2">
                         <span className={labelClass}>
@@ -1335,43 +1815,106 @@ export default function ProductForm({
                         />
                       </label>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
                         <button
                           type="button"
                           onClick={applyStockToAllSizes}
                           className="inline-flex min-h-9 items-center justify-center rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white transition hover:bg-slate-800 sm:min-h-11 sm:px-4 sm:py-2.5 sm:text-sm"
                         >
-                          Aplicar
+                          Aplicar cantidad a todas las tallas
+                        </button>
+                        <button
+                          type="button"
+                          onClick={copyStockToAllColors}
+                          className="inline-flex min-h-9 items-center justify-center rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700 shadow-sm ring-1 ring-rose-100 transition hover:bg-rose-50 sm:min-h-11 sm:px-4 sm:py-2.5 sm:text-sm"
+                        >
+                          Copiar stock a todos los colores
                         </button>
                         <button
                           type="button"
                           onClick={clearStockQuantities}
                           className="inline-flex min-h-9 items-center justify-center rounded-full bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-200 sm:min-h-11 sm:px-4 sm:py-2.5 sm:text-sm"
                         >
-                          Limpiar
+                          Limpiar cantidades
                         </button>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
-                      {sizes.map((size) => (
-                        <label key={size} className="space-y-2">
-                          <span className={labelClass}>Talla {size}</span>
-                          <input
-                            value={form.stockBySize[size] ?? "0"}
-                            onChange={(event) =>
-                              updateSizeStock(size, event.target.value)
-                            }
-                            className={fieldClass}
-                            inputMode="numeric"
-                            placeholder="Ej. 0"
-                          />
-                        </label>
+                    <div className="hidden overflow-x-auto rounded-2xl bg-white ring-1 ring-rose-100 sm:block">
+                      <table className="w-full min-w-[560px] text-sm">
+                        <thead className="bg-[#fffaf5] text-xs font-black uppercase text-slate-500">
+                          <tr>
+                            <th className="px-3 py-3 text-left">Color / Talla</th>
+                            {sizes.map((size) => (
+                              <th key={size} className="px-2 py-3 text-center">
+                                {size}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {colors.map((color) => (
+                            <tr key={color} className="border-t border-rose-100">
+                              <th className="px-3 py-2 text-left text-sm font-black text-slate-800">
+                                {color}
+                              </th>
+                              {sizes.map((size) => (
+                                <td key={`${color}-${size}`} className="px-2 py-2">
+                                  <input
+                                    value={form.stockByVariant[color]?.[size] ?? "0"}
+                                    onChange={(event) =>
+                                      updateVariantStock(
+                                        color,
+                                        size,
+                                        event.target.value
+                                      )
+                                    }
+                                    className="h-10 w-full min-w-[4rem] rounded-xl border border-rose-100 bg-[#fffaf5] px-2 text-center text-sm font-black text-slate-800 outline-none focus:border-rose-300 focus:bg-white"
+                                    inputMode="numeric"
+                                    placeholder="0"
+                                  />
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="space-y-2 sm:hidden">
+                      {colors.map((color) => (
+                        <details
+                          key={color}
+                          open={colors.length === 1}
+                          className="rounded-2xl bg-white p-3 ring-1 ring-rose-100"
+                        >
+                          <summary className="cursor-pointer list-none text-sm font-black text-slate-800">
+                            {color}
+                          </summary>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            {sizes.map((size) => (
+                              <label key={`${color}-mobile-${size}`} className="space-y-1">
+                                <span className={labelClass}>Talla {size}</span>
+                                <input
+                                  value={form.stockByVariant[color]?.[size] ?? "0"}
+                                  onChange={(event) =>
+                                    updateVariantStock(color, size, event.target.value)
+                                  }
+                                  className={fieldClass}
+                                  inputMode="numeric"
+                                  placeholder="0"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                        </details>
                       ))}
                     </div>
                   </div>
                 ) : (
-                  <HelpText>Agrega tallas para poder llenar las piezas disponibles.</HelpText>
+                  <HelpText>
+                    Agrega tallas y colores para llenar las piezas disponibles.
+                  </HelpText>
                 )}
               </CollapsibleBlock>
 
@@ -1549,87 +2092,185 @@ export default function ProductForm({
               <section className="order-5 border-t border-rose-100 pt-4 sm:pt-5">
                 <SectionHeader
                   eyebrow="Mayoreo"
-                  title="Venta por mayoreo"
-                  description="Déjalo cerrado si este producto se vende normal."
+                  title="Mayoreo corrido"
+                  description="Configura corridas por color y talla para mayoreo."
                   icon={<BadgePercent size={20} />}
                 />
 
             <CollapsibleBlock
-              title="Configurar mayoreo"
-              description="Precio especial y regla de mínimo."
+              title="Mayoreo corrido"
+              description="1 pieza de cada talla configurada, todas del mismo color."
+              defaultOpen
             >
-              <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-2">
-                <label className="space-y-2">
-                  <span className={labelClass}>Forma de mayoreo</span>
-                  <select
-                    value={form.wholesaleMode}
+              <div className="space-y-4">
+                <label className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-rose-100 bg-white px-3 py-2.5 sm:rounded-2xl sm:px-4 sm:py-3">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-black text-slate-800">
+                      Activar mayoreo corrido
+                    </span>
+                    <span className="mt-1 hidden text-xs font-semibold leading-5 text-slate-600 sm:block">
+                      El mayoreo corrido aplica cuando el cliente lleva 1 pieza de cada talla configurada, todas del mismo color.
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={form.wholesaleRunEnabled}
                     onChange={(event) =>
-                      updateField(
-                        "wholesaleMode",
-                        event.target.value as WholesaleMode
-                      )
+                      updateField("wholesaleRunEnabled", event.target.checked)
                     }
-                    className={fieldClass}
-                  >
-                    <option value="none">No aplica</option>
-                    <option value="mixed">Mayoreo surtido</option>
-                    <option value="product">Mayoreo por producto</option>
-                  </select>
+                    className="h-5 w-5 shrink-0 accent-rose-500"
+                  />
                 </label>
 
-                {form.wholesaleMode !== "none" && (
+                <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-2">
                   <label className="space-y-2">
-                    <span className={labelClass}>Precio mayoreo</span>
+                    <span className={labelClass}>Precio mayoreo por pieza</span>
                     <input
-                      value={form.wholesalePrice}
+                      value={form.wholesaleRunPrice}
                       onChange={(event) =>
-                        updateField("wholesalePrice", event.target.value)
+                        updateField("wholesaleRunPrice", event.target.value)
                       }
                       className={fieldClass}
                       inputMode="decimal"
                       placeholder="Ej. 250"
+                      disabled={!form.wholesaleRunEnabled}
                     />
                     <HelpText>Debe ser menor o igual al precio normal.</HelpText>
+                    {form.wholesaleRunEnabled && wholesaleRunPriceError ? (
+                      <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black leading-5 text-amber-900 ring-1 ring-amber-200 sm:rounded-2xl">
+                        {wholesaleRunPriceError}
+                      </p>
+                    ) : null}
                   </label>
-                )}
 
-                <label className="space-y-2">
-                  <span className={labelClass}>Mínimo por producto</span>
-                  <input
-                    value={form.wholesaleMinQuantity}
-                    onChange={(event) =>
-                      updateField("wholesaleMinQuantity", event.target.value)
-                    }
-                    className={fieldClass}
-                    inputMode="numeric"
-                    placeholder="Ej. 6"
-                    disabled={form.wholesaleMode !== "product"}
-                  />
-                  <HelpText>Solo aplica para mayoreo por producto.</HelpText>
-                </label>
-
-                <label className="space-y-2 lg:col-span-2">
-                  <span className={labelClass}>Mensaje para el cliente</span>
-                  <input
-                    value={form.wholesaleNote}
-                    onChange={(event) =>
-                      updateField("wholesaleNote", event.target.value)
-                    }
-                    className={fieldClass}
-                    placeholder="Ej. Puedes combinar colores y tallas"
-                    disabled={form.wholesaleMode === "none"}
-                  />
-                </label>
-              </div>
-
-              {form.wholesaleMode !== "none" && (
-                <div className="mt-3 rounded-xl bg-white px-3 py-2.5 text-xs font-bold leading-5 text-slate-600 ring-1 ring-rose-100 sm:mt-4 sm:rounded-2xl sm:px-4 sm:py-3">
-                  {form.wholesaleMode === "mixed"
-                    ? "Mayoreo surtido: el mínimo se toma de la configuración general de tienda y permite combinar prendas elegibles."
-                    : "Mayoreo por producto: el mínimo se completa con esta prenda, aunque cambie la talla."}
+                  <div className="space-y-2">
+                    <span className={labelClass}>Colores disponibles</span>
+                    <div className="flex min-w-0 flex-wrap gap-2 rounded-xl bg-white p-2 ring-1 ring-rose-100 sm:rounded-2xl">
+                      {colors.length > 0 ? (
+                        colors.map((color) => (
+                          <span
+                            key={color}
+                            className="rounded-full bg-[#fffaf5] px-3 py-1.5 text-xs font-black text-slate-700 ring-1 ring-rose-100"
+                          >
+                            {color}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="px-2 py-1 text-xs font-bold text-slate-400">
+                          Agrega colores en Datos del producto.
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
+
+                <div className="space-y-2">
+                  <span className={labelClass}>Tallas que forman la corrida</span>
+                  <div className="flex min-w-0 flex-wrap gap-2">
+                    {sizes.map((size) => {
+                      const isSelected = form.wholesaleRunSizes.includes(size);
+
+                      return (
+                        <button
+                          key={`run-${size}`}
+                          type="button"
+                          onClick={() => toggleWholesaleRunSize(size)}
+                          disabled={!form.wholesaleRunEnabled}
+                          className={`min-h-9 rounded-full px-3 py-2 text-xs font-black transition disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-10 sm:px-4 ${
+                            isSelected
+                              ? "bg-slate-950 text-white shadow-sm"
+                              : "bg-white text-slate-700 ring-1 ring-rose-100 hover:bg-rose-50"
+                          }`}
+                        >
+                          Talla {size}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="rounded-xl bg-white px-3 py-2 text-xs font-bold leading-5 text-slate-600 ring-1 ring-rose-100 sm:rounded-2xl">
+                    Ej. {colors[0] ?? "Beige"}: talla{" "}
+                    {(normalizedWholesaleRunSizes.length > 0
+                      ? normalizedWholesaleRunSizes
+                      : sizes
+                    ).join(" + ") || "2 + 4 + 6 + 8"}
+                  </p>
+                  {form.wholesaleRunEnabled && normalizedWholesaleRunSizes.length === 0 ? (
+                    <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-black leading-5 text-amber-900 ring-1 ring-amber-200 sm:rounded-2xl">
+                      Elige al menos una talla para la corrida.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
             </CollapsibleBlock>
+
+            {productToEdit && String(form.wholesaleMode) === "__legacy_hidden__" ? <div className="mt-3">
+              <CollapsibleBlock
+                title="__REMOVE__"
+                description="Solo para productos heredados que ya usaban otra regla."
+              >
+                <div className="grid min-w-0 gap-3 sm:gap-4 lg:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className={labelClass}>Regla heredada</span>
+                    <select
+                      value={form.wholesaleMode}
+                      onChange={(event) =>
+                        updateField(
+                          "wholesaleMode",
+                          event.target.value as WholesaleMode
+                        )
+                      }
+                      className={fieldClass}
+                    >
+                      <option value="none">No aplica</option>
+                      <option value="mixed">Mayoreo surtido heredado</option>
+                      <option value="product">Mayoreo por producto heredado</option>
+                    </select>
+                  </label>
+
+                  {form.wholesaleMode !== "none" && (
+                    <label className="space-y-2">
+                      <span className={labelClass}>Precio mayoreo heredado</span>
+                      <input
+                        value={form.wholesalePrice}
+                        onChange={(event) =>
+                          updateField("wholesalePrice", event.target.value)
+                        }
+                        className={fieldClass}
+                        inputMode="decimal"
+                        placeholder="Ej. 250"
+                      />
+                    </label>
+                  )}
+
+                  <label className="space-y-2">
+                    <span className={labelClass}>Mínimo por producto</span>
+                    <input
+                      value={form.wholesaleMinQuantity}
+                      onChange={(event) =>
+                        updateField("wholesaleMinQuantity", event.target.value)
+                      }
+                      className={fieldClass}
+                      inputMode="numeric"
+                      placeholder="Ej. 6"
+                      disabled={form.wholesaleMode !== "product"}
+                    />
+                  </label>
+
+                  <label className="space-y-2 lg:col-span-2">
+                    <span className={labelClass}>Nota heredada</span>
+                    <input
+                      value={form.wholesaleNote}
+                      onChange={(event) =>
+                        updateField("wholesaleNote", event.target.value)
+                      }
+                      className={fieldClass}
+                      placeholder="Ej. Condición especial de mayoreo"
+                      disabled={form.wholesaleMode === "none"}
+                    />
+                  </label>
+                </div>
+              </CollapsibleBlock>
+            </div> : null}
               </section>
 
               <section className="order-6 border-t border-rose-100 pt-4 sm:pt-5">
@@ -1700,11 +2341,18 @@ export default function ProductForm({
                   </div>
                   <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
                     <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                      Secciones
+                      Categorías
                     </p>
                     <p className="mt-1 break-words text-sm font-black text-slate-950">
-                      {selectedSectionLabels || form.category} ·{" "}
-                      {form.subcategory || "Sin tipo"}
+                      {selectedSectionLabels || form.category}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Subcategorías
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {selectedSubcategoryLabels || "Sin subcategoría"}
                     </p>
                   </div>
                   <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
@@ -1727,16 +2375,81 @@ export default function ProductForm({
                       {form.isActive ? "Visible" : "Pausado"}
                     </p>
                   </div>
-                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100 sm:col-span-2">
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
                     <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                      Tallas y piezas
+                      Colores
                     </p>
                     <p className="mt-1 break-words text-sm font-black text-slate-950">
-                      Tallas: {sizes.length > 0 ? sizes.join(", ") : "sin tallas"} · Piezas: {totalStock}
+                      {colors.length > 0 ? colors.join(", ") : "Sin colores"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Tallas
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {sizes.length > 0 ? sizes.join(", ") : "Sin tallas"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Piezas totales
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {stockSummaryLabel}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100 sm:col-span-2">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Mayoreo corrido
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {form.wholesaleRunEnabled
+                        ? "Aplica"
+                        : "No aplica"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Precio mayoreo por pieza
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {form.wholesaleRunEnabled
+                        ? wholesaleRunPriceError
+                          ? "Pendiente"
+                          : formatPrice(wholesaleRunPriceValue ?? 0)
+                        : "No aplica"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-2 ring-1 ring-rose-100">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      Tallas de corrida
+                    </p>
+                    <p className="mt-1 break-words text-sm font-black text-slate-950">
+                      {form.wholesaleRunEnabled
+                        ? normalizedWholesaleRunSizes.length > 0
+                          ? normalizedWholesaleRunSizes.join(", ")
+                          : "Pendiente"
+                        : "No aplica"}
                     </p>
                   </div>
                 </div>
               </div>
+              {reviewWarnings.length > 0 ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-black text-amber-950 sm:mt-4 sm:rounded-2xl sm:p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p>Faltan datos importantes antes de guardar.</p>
+                      <ul className="mt-2 space-y-1 text-xs font-semibold leading-5 sm:text-sm">
+                        {reviewWarnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </section>
           )}
         </div>
@@ -1788,7 +2501,7 @@ export default function ProductForm({
 
                 <p className="text-[11px] font-black uppercase text-slate-600">
                   {selectedSectionLabels || previewProduct.category} ·{" "}
-                  {previewProduct.subcategory}
+                  {selectedSubcategoryLabels || previewProduct.subcategory}
                 </p>
                 <h3 className="mt-1.5 line-clamp-2 min-h-[2.4rem] text-base font-black leading-tight text-slate-950">
                   {previewProduct.name}
@@ -1855,7 +2568,7 @@ export default function ProductForm({
               <button
                 type="submit"
                 onClick={() => setNextSaveAction("addAnother")}
-                disabled={isSaving}
+                disabled={!canSaveProduct}
                 className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300 sm:w-auto"
               >
                 <Save size={17} />
@@ -1868,7 +2581,7 @@ export default function ProductForm({
             <button
               type="submit"
               onClick={() => setNextSaveAction("close")}
-              disabled={isSaving}
+              disabled={!canSaveProduct}
               className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 sm:w-auto"
             >
               <Save size={17} />
@@ -1919,7 +2632,7 @@ export default function ProductForm({
             <button
               type="submit"
               onClick={() => setNextSaveAction("close")}
-              disabled={isSaving}
+              disabled={!canSaveProduct}
               className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               <Save size={15} />

@@ -14,7 +14,7 @@ import type {
   FirebaseOrderItem,
   OrderShipping,
 } from "@/lib/firebase-types";
-import { formatPrice, getProductStockForSize } from "@/lib/products";
+import { formatPrice, getProductStockForColorAndSize } from "@/lib/products";
 import {
   getSafeOrderMessage,
   getSafePaymentMessage,
@@ -85,6 +85,12 @@ const checkoutSteps: { step: CheckoutStep; label: string }[] = [
   { step: 3, label: "Confirmar" },
 ];
 
+const shippingQuoteConfirmationText =
+  "Confirmo que entiendo que el pago en línea cubre únicamente los productos. El costo de envío se cotizará por WhatsApp y se pagará por separado según el acuerdo con la tienda.";
+
+const shippingQuoteRequiredText =
+  "Debes confirmar que entiendes cómo se cotiza el envío antes de continuar.";
+
 function getCartImage(item: CartItem) {
   return (
     item.product.imageUrl ||
@@ -134,6 +140,8 @@ export default function CartDrawer() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isStartingPayment, setIsStartingPayment] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+  const [shippingQuoteAcknowledged, setShippingQuoteAcknowledged] =
+    useState(false);
   const submitLockRef = useRef(false);
 
   const wholesaleLines = useMemo(
@@ -162,40 +170,54 @@ export default function CartDrawer() {
     totalItems: totalPieces,
     hasWholesale: hasWholesaleItems,
   });
-  const shippingCost = shipping.cost;
+  const payableShipping = shipping.requiresQuote
+    ? { ...shipping, cost: 0 }
+    : shipping;
+  const shippingCost = payableShipping.cost;
   const total = subtotal + shippingCost;
   const needsDeliveryAddress = isDeliveryAddressRequired(
     customerForm.deliveryMethod
   );
   const shippingDisplay = shipping.requiresQuote
-    ? "A cotizar"
+    ? "Se cotiza por WhatsApp"
     : formatPrice(shippingCost);
   const paymentStatusText =
     customerForm.paymentPreference === "pay_now"
-      ? "Pendiente"
-      : "Manual / acordar por WhatsApp";
+      ? shipping.requiresQuote
+        ? "Pendiente: productos"
+        : "Pendiente"
+      : shipping.requiresQuote
+        ? "Pago de productos por acordar"
+        : "Manual / acordar por WhatsApp";
   const paymentPreferenceText =
     customerForm.paymentPreference === "pay_now"
       ? "Pagar ahora"
       : "Acordar por WhatsApp";
+  const quotedShippingPaymentLabel =
+    customerForm.paymentPreference === "pay_now"
+      ? "Pago ahora"
+      : "Pago de productos";
   const stockMessages = useMemo(
     () =>
       items
         .map((item) => {
-          const availablePieces = getProductStockForSize(
+          const availablePieces = getProductStockForColorAndSize(
             item.product,
+            item.selectedColor,
             item.selectedSize
           );
 
           if (availablePieces <= 0) return "Esta talla ya no está disponible.";
           if (item.quantity <= availablePieces) return "";
 
-          return `No hay suficientes piezas de ${item.product.name} talla ${item.selectedSize}.`;
+          return `No hay suficientes piezas de ${item.product.name} color ${item.selectedColor ?? "Sin color"} talla ${item.selectedSize}.`;
         })
         .filter(Boolean),
     [items]
   );
   const canContinue = wholesaleValidation.canCheckout && stockMessages.length === 0;
+  const canConfirmOrder =
+    canContinue && (!shipping.requiresQuote || shippingQuoteAcknowledged);
   function updateCustomerForm<Key extends keyof CustomerForm>(
     key: Key,
     value: CustomerForm[Key]
@@ -247,6 +269,7 @@ export default function CartDrawer() {
     setStep(1);
     setCustomerForm(createInitialCustomerForm());
     setConfirmation(null);
+    setShippingQuoteAcknowledged(false);
   }
 
   function handleCloseCart() {
@@ -255,13 +278,10 @@ export default function CartDrawer() {
   }
 
   function buildOrderItems(): FirebaseOrderItem[] {
-    return items.map((item) => {
+    return items.flatMap((item) => {
       const pricedLine = wholesaleLineById.get(item.cartItemId || item.id);
-      const unitPrice = pricedLine?.unitPrice ?? item.product.price;
-      const subtotal = unitPrice * item.quantity;
       const mainImage = getCartImage(item);
-
-      return {
+      const baseItem = {
         productId: item.productId,
         productName: item.product.name,
         name: item.product.name,
@@ -269,14 +289,56 @@ export default function CartDrawer() {
         category: item.product.category,
         subcategory: item.product.subcategory,
         size: item.selectedSize,
-        quantity: item.quantity,
-        price: unitPrice,
-        subtotal,
+        color: item.selectedColor ?? "Sin color",
         mainImage,
         image: mainImage,
+        regularPrice: item.product.price,
         wholesaleType: item.product.wholesaleMode ?? "none",
         wholesaleMinimum: item.product.wholesaleMinQuantity ?? 0,
+        wholesaleRunPrice: item.product.wholesaleRunPrice ?? null,
       };
+
+      if (!pricedLine) {
+        return [
+          {
+            ...baseItem,
+            quantity: item.quantity,
+            price: item.product.price,
+            subtotal: item.product.price * item.quantity,
+            priceLabel: "regular" as const,
+          },
+        ];
+      }
+
+      const orderItems: FirebaseOrderItem[] = [];
+
+      if (pricedLine.wholesaleQuantity > 0) {
+        orderItems.push({
+          ...baseItem,
+          quantity: pricedLine.wholesaleQuantity,
+          price:
+            item.product.wholesaleRunEnabled && item.product.wholesaleRunPrice
+              ? item.product.wholesaleRunPrice
+              : pricedLine.unitPrice,
+          subtotal: pricedLine.wholesaleSubtotal,
+          wholesaleRunApplied: Boolean(item.product.wholesaleRunEnabled),
+          priceLabel: item.product.wholesaleRunEnabled
+            ? "wholesale_run"
+            : "wholesale",
+        });
+      }
+
+      if (pricedLine.regularQuantity > 0) {
+        orderItems.push({
+          ...baseItem,
+          quantity: pricedLine.regularQuantity,
+          price: item.product.price,
+          subtotal: pricedLine.regularSubtotal,
+          priceLabel: "regular",
+        });
+      }
+
+      return orderItems;
     });
   }
 
@@ -290,6 +352,7 @@ export default function CartDrawer() {
     const productsText = orderItems
       .map(
         (item) => `- ${item.productName ?? item.name}
+  Color: ${item.color ?? "Sin color"}
   Talla: ${item.size}
   Cantidad: ${item.quantity}
   Subtotal: ${formatPrice(item.subtotal)}`
@@ -303,8 +366,15 @@ export default function CartDrawer() {
       ? `Método de entrega: ${customerForm.deliveryMethod}\n\nDirección:\n${deliveryAddressText}`
       : `Entrega: ${customerForm.deliveryMethod}`;
     const quoteText = orderShipping.requiresQuote
-      ? "\n\nEl envío de pedidos grandes o mayoreo se confirmará por WhatsApp."
+      ? "\n\nEl envío queda pendiente de cotización y pago por separado."
       : "";
+    const totalsText = orderShipping.requiresQuote
+      ? `Total de productos: ${formatPrice(orderSubtotal)}
+Envío: Se cotiza por WhatsApp
+${quotedShippingPaymentLabel}: ${formatPrice(orderSubtotal)}`
+      : `Subtotal: ${formatPrice(orderSubtotal)}
+Envío nacional: ${formatPrice(orderShipping.cost)}
+Total: ${formatPrice(orderTotal)}`;
 
     return `Hola, quiero confirmar este pedido:
 
@@ -315,9 +385,7 @@ ${deliveryText}
 Productos:
 ${productsText}
 
-Subtotal: ${formatPrice(orderSubtotal)}
-Envío nacional: ${orderShipping.requiresQuote ? "A cotizar" : formatPrice(orderShipping.cost)}
-Total: ${formatPrice(orderTotal)}
+${totalsText}
 Forma de pago: ${paymentPreferenceText}
 ${quoteText}
 
@@ -383,8 +451,9 @@ ${customerForm.notes || "Sin notas."}`;
   }
 
   function handleIncreaseItem(item: CartItem) {
-    const availablePieces = getProductStockForSize(
+    const availablePieces = getProductStockForColorAndSize(
       item.product,
+      item.selectedColor,
       item.selectedSize
     );
 
@@ -446,9 +515,15 @@ ${customerForm.notes || "Sin notas."}`;
       return;
     }
 
+    if (shipping.requiresQuote && !shippingQuoteAcknowledged) {
+      toast.error(shippingQuoteRequiredText);
+      submitLockRef.current = false;
+      return;
+    }
+
     const orderItems = buildOrderItems();
     const orderSubtotal = subtotal;
-    const orderShipping = shipping;
+    const orderShipping = payableShipping;
     const orderTotal = total;
     const payment =
       customerForm.paymentPreference === "pay_now"
@@ -700,6 +775,10 @@ ${customerForm.notes || "Sin notas."}`;
                           pricedLine?.unitPrice ?? item.product.price;
                         const itemSubtotal =
                           pricedLine?.subtotal ?? unitPrice * item.quantity;
+                        const hasSplitRunPrice =
+                          Boolean(item.product.wholesaleRunEnabled) &&
+                          Boolean(pricedLine?.wholesaleQuantity) &&
+                          Boolean(pricedLine?.regularQuantity);
 
                         return (
                         <div
@@ -723,15 +802,17 @@ ${customerForm.notes || "Sin notas."}`;
                               </div>
 
                               <p className="mt-1 text-sm text-slate-500">
-                                {formatPrice(unitPrice)} c/u
+                                {hasSplitRunPrice
+                                  ? `${pricedLine?.wholesaleQuantity} pza(s) corrida + ${pricedLine?.regularQuantity} normal`
+                                  : `${formatPrice(unitPrice)} c/u`}
                                 {pricedLine?.usesWholesalePrice && (
                                   <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase text-emerald-700 ring-1 ring-emerald-100">
-                                    Mayoreo aplicado
+                                    Mayoreo corrido aplicado
                                   </span>
                                 )}
                               </p>
                               <p className="mt-1 text-xs font-bold text-slate-400">
-                                Talla: {item.selectedSize}
+                                Color: {item.selectedColor ?? "Sin color"} · Talla: {item.selectedSize}
                               </p>
 
                               {isWholesaleProduct(item.product) && (
@@ -1001,7 +1082,7 @@ ${customerForm.notes || "Sin notas."}`;
 
                       {shipping.requiresQuote && (
                         <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-800 ring-1 ring-amber-100">
-                          El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
+                          El envío se cotiza por WhatsApp y se paga por separado según el acuerdo con la tienda.
                         </p>
                       )}
 
@@ -1050,7 +1131,9 @@ ${customerForm.notes || "Sin notas."}`;
 
                         {customerForm.paymentPreference === "pay_now" && (
                           <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-slate-500 ring-1 ring-slate-100">
-                            La disponibilidad y el envío se validan con la tienda. Recibirás confirmación por WhatsApp.
+                            {shipping.requiresQuote
+                              ? "El pago en línea cubre únicamente los productos. El envío se cotiza por WhatsApp y se paga por separado."
+                              : "La disponibilidad y el envío se validan con la tienda. Recibirás confirmación por WhatsApp."}
                           </p>
                         )}
                       </div>
@@ -1112,52 +1195,79 @@ ${customerForm.notes || "Sin notas."}`;
                       </div>
 
                       <div className="space-y-2">
-                        {items.map((item) => (
-                          <div
-                            key={`summary-${item.id}`}
-                            className="flex items-start justify-between gap-3 rounded-2xl bg-[#fffaf5] p-3"
-                          >
-                            <div>
+                        {items.map((item) => {
+                          const pricedLine =
+                            wholesaleLineById.get(item.cartItemId || item.id);
+                          const itemSubtotal =
+                            pricedLine?.subtotal ?? item.product.price * item.quantity;
+
+                          return (
+                            <div
+                              key={`summary-${item.id}`}
+                              className="flex items-start justify-between gap-3 rounded-2xl bg-[#fffaf5] p-3"
+                            >
+                              <div>
+                                <p className="text-sm font-black text-slate-950">
+                                  {item.product.name}
+                                </p>
+                                <p className="mt-1 text-xs font-bold text-slate-500">
+                                  Color {item.selectedColor ?? "Sin color"} · Talla {item.selectedSize} · {item.quantity} pieza(s)
+                                </p>
+                              </div>
                               <p className="text-sm font-black text-slate-950">
-                                {item.product.name}
-                              </p>
-                              <p className="mt-1 text-xs font-bold text-slate-500">
-                                Talla {item.selectedSize} · {item.quantity} pieza(s)
+                                {formatPrice(itemSubtotal)}
                               </p>
                             </div>
-                            <p className="text-sm font-black text-slate-950">
-                              {formatPrice(item.product.price * item.quantity)}
-                            </p>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       <div className="rounded-2xl bg-[#fffaf5] p-4">
-                        <div className="space-y-2 text-sm font-bold text-slate-600">
-                          <div className="flex items-center justify-between gap-3">
-                            <span>Subtotal</span>
-                            <span className="font-black text-slate-950">
-                              {formatPrice(subtotal)}
-                            </span>
+                        {shipping.requiresQuote ? (
+                          <div className="space-y-2 text-sm font-bold text-slate-600">
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Total de productos</span>
+                              <span className="font-black text-slate-950">
+                                {formatPrice(subtotal)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Envío</span>
+                              <span className="text-right font-black text-amber-700">
+                                Se cotiza por WhatsApp
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
+                              <span>{quotedShippingPaymentLabel}</span>
+                              <span className="text-lg font-black text-slate-950">
+                                {formatPrice(subtotal)}
+                              </span>
+                            </div>
+                            <p className="rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
+                              El envío queda pendiente de cotización y pago por separado.
+                            </p>
                           </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span>Envío nacional</span>
-                            <span className="font-black text-slate-950">
-                              {shippingDisplay}
-                            </span>
+                        ) : (
+                          <div className="space-y-2 text-sm font-bold text-slate-600">
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Subtotal</span>
+                              <span className="font-black text-slate-950">
+                                {formatPrice(subtotal)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <span>Envío nacional</span>
+                              <span className="font-black text-slate-950">
+                                {shippingDisplay}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
+                              <span>Total</span>
+                              <span className="text-lg font-black text-slate-950">
+                                {formatPrice(total)}
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
-                            <span>Total</span>
-                            <span className="text-lg font-black text-slate-950">
-                              {formatPrice(total)}
-                            </span>
-                          </div>
-                        </div>
-
-                        {shipping.requiresQuote && (
-                          <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
-                            El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
-                          </p>
                         )}
                       </div>
 
@@ -1182,10 +1292,31 @@ ${customerForm.notes || "Sin notas."}`;
                         </p>
                         {shipping.requiresQuote && (
                           <p className="mt-2">
-                            El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
+                            El envío queda pendiente de cotización y pago por separado.
                           </p>
                         )}
                       </div>
+
+                      {shipping.requiresQuote && (
+                        <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-100">
+                          <label className="flex cursor-pointer items-start gap-3 text-sm font-bold leading-6 text-amber-900">
+                            <input
+                              type="checkbox"
+                              checked={shippingQuoteAcknowledged}
+                              onChange={(event) =>
+                                setShippingQuoteAcknowledged(event.target.checked)
+                              }
+                              className="mt-1 h-5 w-5 shrink-0 accent-slate-950"
+                            />
+                            <span>{shippingQuoteConfirmationText}</span>
+                          </label>
+                          {!shippingQuoteAcknowledged && (
+                            <p className="mt-2 text-xs font-black text-amber-800">
+                              {shippingQuoteRequiredText}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {customerForm.notes && (
                         <div className="rounded-2xl bg-[#fffaf5] p-4">
@@ -1247,48 +1378,89 @@ ${customerForm.notes || "Sin notas."}`;
               ) : (
                 <>
                   <div className="mb-2 sm:hidden">
-                    <p className="truncate text-[11px] font-bold text-slate-500">
-                      Subtotal {formatPrice(subtotal)} · Envío{" "}
-                      {shipping.requiresQuote ? "a cotizar" : formatPrice(shippingCost)}
-                    </p>
-                    <div className="mt-0.5 flex items-center justify-between gap-3">
-                      <span className="text-xs font-black text-slate-600">
-                        Total
-                      </span>
-                      <strong className="text-2xl font-black leading-none text-slate-950">
-                        {formatPrice(total)}
-                      </strong>
-                    </div>
-                    {shipping.requiresQuote && (
-                      <p className="mt-1 rounded-xl bg-amber-50 px-2.5 py-1 text-[10px] font-bold leading-4 text-amber-800 ring-1 ring-amber-100">
-                        El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
-                      </p>
+                    {shipping.requiresQuote ? (
+                      <>
+                        <p className="truncate text-[11px] font-bold text-slate-500">
+                          Total de productos {formatPrice(subtotal)} · Envío a cotizar
+                        </p>
+                        <div className="mt-0.5 flex items-center justify-between gap-3">
+                          <span className="text-xs font-black text-slate-600">
+                            {quotedShippingPaymentLabel}
+                          </span>
+                          <strong className="text-2xl font-black leading-none text-slate-950">
+                            {formatPrice(subtotal)}
+                          </strong>
+                        </div>
+                        <p className="mt-1 rounded-xl bg-amber-50 px-2.5 py-1 text-[10px] font-bold leading-4 text-amber-800 ring-1 ring-amber-100">
+                          Envío: se cotiza por WhatsApp y se paga por separado.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="truncate text-[11px] font-bold text-slate-500">
+                          Subtotal {formatPrice(subtotal)} · Envío{" "}
+                          {formatPrice(shippingCost)}
+                        </p>
+                        <div className="mt-0.5 flex items-center justify-between gap-3">
+                          <span className="text-xs font-black text-slate-600">
+                            Total
+                          </span>
+                          <strong className="text-2xl font-black leading-none text-slate-950">
+                            {formatPrice(total)}
+                          </strong>
+                        </div>
+                      </>
                     )}
                   </div>
 
                   <div className="mb-3 hidden space-y-1.5 sm:block">
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
-                      <span>Subtotal</span>
-                      <span className="text-slate-950">
-                        {formatPrice(subtotal)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
-                      <span>Envío nacional</span>
-                      <span className="text-slate-950">{shippingDisplay}</span>
-                    </div>
-                    <div className="flex items-center justify-between border-t border-rose-100 pt-1.5">
-                      <span className="text-sm font-black text-slate-600">
-                        Total
-                      </span>
-                      <strong className="text-xl font-black text-slate-950 sm:text-2xl">
-                        {formatPrice(total)}
-                      </strong>
-                    </div>
-                    {shipping.requiresQuote && (
-                      <p className="rounded-2xl bg-amber-50 px-3 py-1.5 text-[11px] font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
-                        El envío de pedidos grandes o mayoreo se confirma por WhatsApp.
-                      </p>
+                    {shipping.requiresQuote ? (
+                      <>
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
+                          <span>Total de productos</span>
+                          <span className="text-slate-950">
+                            {formatPrice(subtotal)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
+                          <span>Envío</span>
+                          <span className="text-right text-amber-700">
+                            Se cotiza por WhatsApp
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-rose-100 pt-1.5">
+                          <span className="text-sm font-black text-slate-600">
+                            {quotedShippingPaymentLabel}
+                          </span>
+                          <strong className="text-xl font-black text-slate-950 sm:text-2xl">
+                            {formatPrice(subtotal)}
+                          </strong>
+                        </div>
+                        <p className="rounded-2xl bg-amber-50 px-3 py-1.5 text-[11px] font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
+                          El envío se cotiza por WhatsApp y se paga por separado.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
+                          <span>Subtotal</span>
+                          <span className="text-slate-950">
+                            {formatPrice(subtotal)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
+                          <span>Envío nacional</span>
+                          <span className="text-slate-950">{shippingDisplay}</span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-rose-100 pt-1.5">
+                          <span className="text-sm font-black text-slate-600">
+                            Total
+                          </span>
+                          <strong className="text-xl font-black text-slate-950 sm:text-2xl">
+                            {formatPrice(total)}
+                          </strong>
+                        </div>
+                      </>
                     )}
                   </div>
 
@@ -1318,30 +1490,38 @@ ${customerForm.notes || "Sin notas."}`;
                         Continuar
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => void handleConfirmOrder()}
-                        disabled={
-                          isSubmitting ||
-                          isStartingPayment ||
-                          items.length === 0 ||
-                          !canContinue
-                        }
-                        className="flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-black text-white shadow-md shadow-emerald-100 transition hover:scale-[1.01] hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none sm:py-3"
-                      >
-                        {customerForm.paymentPreference === "pay_now" ? (
-                          <CreditCard size={17} />
-                        ) : (
-                          <Send size={17} />
+                      <>
+                        {shipping.requiresQuote && !shippingQuoteAcknowledged && (
+                          <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-black leading-4 text-amber-800 ring-1 ring-amber-100">
+                            {shippingQuoteRequiredText}
+                          </p>
                         )}
-                        {isSubmitting
-                          ? customerForm.paymentPreference === "pay_now"
-                            ? "Preparando pago..."
-                            : "Guardando pedido..."
-                          : customerForm.paymentPreference === "pay_now"
-                            ? "Continuar al pago"
-                            : "Enviar pedido por WhatsApp"}
-                      </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void handleConfirmOrder()}
+                          disabled={
+                            isSubmitting ||
+                            isStartingPayment ||
+                            items.length === 0 ||
+                            !canConfirmOrder
+                          }
+                          className="flex items-center justify-center gap-2 rounded-full bg-emerald-500 px-4 py-2.5 text-sm font-black text-white shadow-md shadow-emerald-100 transition hover:scale-[1.01] hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none sm:py-3"
+                        >
+                          {customerForm.paymentPreference === "pay_now" ? (
+                            <CreditCard size={17} />
+                          ) : (
+                            <Send size={17} />
+                          )}
+                          {isSubmitting
+                            ? customerForm.paymentPreference === "pay_now"
+                              ? "Preparando pago..."
+                              : "Guardando pedido..."
+                            : customerForm.paymentPreference === "pay_now"
+                              ? "Continuar al pago"
+                              : "Enviar pedido por WhatsApp"}
+                        </button>
+                      </>
                     )}
 
                     <div className="flex flex-wrap items-center justify-center gap-2 sm:grid sm:gap-2">

@@ -14,8 +14,14 @@ import {
   categoryToSection,
   formatPrice,
   getSectionLabels,
+  getSubcategoryLabels,
   isPublicStoreProduct,
+  normalizeProductSections,
+  normalizeProductSubcategories,
   productAppearsInSection,
+  productMatchesSubcategory,
+  sectionToCategory,
+  type ProductSection,
 } from "@/lib/products";
 import {
   getSafeFirebaseActionMessage,
@@ -37,7 +43,7 @@ import { toast } from "sonner";
 
 type AdminProduct = FirebaseProduct;
 type ProductFilter = "Todos" | "Activos" | "Agotados" | "Pausados";
-type ProductCategoryFilter = "Todas" | MainCategoryName;
+type ProductCategoryFilter = "Todas" | Exclude<MainCategoryName, "Unisex">;
 
 const productFilters: ProductFilter[] = [
   "Todos",
@@ -49,7 +55,6 @@ const productCategoryFilters: ProductCategoryFilter[] = [
   "Todas",
   "Niña",
   "Niño",
-  "Unisex",
 ];
 
 function createSlug(value: string) {
@@ -74,6 +79,16 @@ function getStatusClass(product: AdminProduct) {
   if (status === "Visible") return "bg-emerald-50 text-emerald-700";
   if (status === "Agotado") return "bg-amber-50 text-amber-700";
   return "bg-slate-100 text-slate-700";
+}
+
+function getProductCategoryLabels(product: AdminProduct) {
+  return getSectionLabels(product) || product.category || "Sin categoría";
+}
+
+function getProductSubcategoryLabels(product: AdminProduct) {
+  return (
+    getSubcategoryLabels(product) || product.subcategory || "Sin subcategoría"
+  );
 }
 
 function isAdminTestProduct(product: AdminProduct) {
@@ -153,7 +168,7 @@ export default function AdminProductsClient() {
     const uniqueSubcategories = Array.from(
       new Set(
         filteredProducts
-          .map((product) => product.subcategory)
+          .flatMap((product) => normalizeProductSubcategories(product))
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b, "es-MX"));
@@ -176,7 +191,7 @@ export default function AdminProductsClient() {
           );
         const matchesSubcategory =
           subcategoryFilter === "Todas" ||
-          product.subcategory === subcategoryFilter;
+          productMatchesSubcategory(product, subcategoryFilter);
 
         return matchesStatus && matchesCategory && matchesSubcategory;
       }),
@@ -290,14 +305,25 @@ export default function AdminProductsClient() {
   async function handleDuplicateProduct(product: AdminProduct) {
     const copyName = `${product.name} Copia`;
     const copySlug = `${createSlug(copyName)}-${Date.now().toString(36)}`;
+    const normalizedSections = normalizeProductSections(product);
+    const productSections: ProductSection[] =
+      normalizedSections.length > 0 ? normalizedSections : ["nina"];
+    const [primarySection = "nina"] = productSections;
+    const productSubcategories = normalizeProductSubcategories(product);
+    const [primarySubcategory = product.subcategory || "General"] =
+      productSubcategories;
     const productCopy: ProductCreateInput = {
       slug: copySlug,
       name: copyName,
       description: product.description,
       longDescription: product.longDescription,
-      category: product.category,
-      sections: product.sections ?? [],
-      subcategory: product.subcategory,
+      category: sectionToCategory(primarySection),
+      sections: productSections,
+      subcategory: primarySubcategory,
+      subcategories:
+        productSubcategories.length > 0
+          ? productSubcategories
+          : [primarySubcategory],
       price: product.price,
       ...(product.basePrice ? { basePrice: product.basePrice } : {}),
       ...(typeof product.paymentFeePercent === "number"
@@ -652,7 +678,7 @@ export default function AdminProductsClient() {
             <thead className="bg-[#fffaf5] text-xs font-black uppercase tracking-wide text-slate-600">
               <tr>
                 <th className="px-5 py-4">Producto</th>
-                <th className="px-5 py-4">Secciones</th>
+                <th className="px-5 py-4">Categorías</th>
                 <th className="px-5 py-4">Precio</th>
                 <th className="px-5 py-4">Piezas</th>
                 <th className="px-5 py-4">Estado</th>
@@ -688,9 +714,9 @@ export default function AdminProductsClient() {
                     </div>
                   </td>
                   <td className="px-5 py-4 text-sm font-bold text-slate-600">
-                    <div>
-                      {getSectionLabels(product) || product.category} ·{" "}
-                      {product.subcategory}
+                    <div>Categorías: {getProductCategoryLabels(product)}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      Subcategorías: {getProductSubcategoryLabels(product)}
                     </div>
                     {product.wholesaleMode !== "none" && (
                       <div className="mt-1 text-xs font-black text-amber-700">
@@ -754,8 +780,10 @@ export default function AdminProductsClient() {
                     {product.name}
                   </h2>
                   <p className="mt-1 line-clamp-1 text-xs font-bold text-slate-600">
-                    {getSectionLabels(product) || product.category} ·{" "}
-                    {product.subcategory}
+                    Categorías: {getProductCategoryLabels(product)}
+                  </p>
+                  <p className="mt-0.5 line-clamp-1 text-xs font-bold text-slate-500">
+                    Subcategorías: {getProductSubcategoryLabels(product)}
                   </p>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">

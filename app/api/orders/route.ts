@@ -31,11 +31,20 @@ import {
   normalizeWholesaleSettings,
   type WholesaleProductLike,
 } from "@/lib/wholesale";
+import {
+  getVariantKey,
+  hasStoredStockByVariant,
+  normalizeStockByVariant,
+  stockByVariantToStockBySize,
+  sumStockByVariant,
+  type StockByVariant,
+} from "@/lib/variant-utils";
 
 export const runtime = "nodejs";
 
 type ParsedOrderItem = {
   productId: string;
+  color: string;
   size: string;
   quantity: number;
 };
@@ -58,6 +67,15 @@ type ParsedOrder = {
 type ProductStockBySize = {
   size: string;
   stock: number;
+};
+
+type ProductInventoryState = {
+  stockBySize: ProductStockBySize[];
+  stockByVariant: StockByVariant;
+  totalStock: number;
+  usesVariantStock: boolean;
+  colors: string[];
+  sizes: string[];
 };
 
 class SafeOrderError extends Error {}
@@ -170,6 +188,7 @@ function parseOrderPayload(body: unknown): ParsedOrder | string {
     }
 
     const productId = readString(item.productId, 140);
+    const color = getVariantKey(readString(item.color, 80));
     const size = readString(item.size, 60) || "Unitalla";
     const quantity = parsePositiveInteger(item.quantity, MAX_TOTAL_ITEMS);
 
@@ -177,7 +196,7 @@ function parseOrderPayload(body: unknown): ParsedOrder | string {
       return "Revisa los productos del pedido e intenta de nuevo.";
     }
 
-    items.push({ productId, size, quantity });
+    items.push({ productId, color, size, quantity });
   }
 
   const totalItems = items.reduce((total, item) => total + item.quantity, 0);
@@ -271,11 +290,57 @@ function updateStockBySize(
   );
 }
 
+function getProductInventoryState(
+  product: Record<string, unknown>,
+  stockBySize: ProductStockBySize[]
+): ProductInventoryState {
+  const colors = getStringListField(product, "colors");
+  const sizes = getStringListField(product, "sizes");
+  const usesVariantStock = hasStoredStockByVariant(product.stockByVariant);
+  const stockByVariant = normalizeStockByVariant(
+    product.stockByVariant,
+    colors.length > 0 ? colors : ["Sin color"],
+    sizes.length > 0 ? sizes : stockBySize.map((item) => item.size),
+    stockBySize,
+    getNumberField(product, "stock")
+  );
+  const normalizedSizes =
+    sizes.length > 0
+      ? sizes
+      : stockBySize.length > 0
+        ? stockBySize.map((item) => item.size)
+        : ["Unitalla"];
+  const totalStock = usesVariantStock
+    ? sumStockByVariant(stockByVariant)
+    : getStockTotal(product, stockBySize);
+
+  return {
+    stockBySize,
+    stockByVariant,
+    totalStock,
+    usesVariantStock,
+    colors: colors.length > 0 ? colors : ["Sin color"],
+    sizes: normalizedSizes,
+  };
+}
+
+function getStockForParsedItem(
+  product: Record<string, unknown>,
+  inventory: ProductInventoryState,
+  item: ParsedOrderItem
+) {
+  if (inventory.usesVariantStock) {
+    return Math.max(inventory.stockByVariant[item.color]?.[item.size] ?? 0, 0);
+  }
+
+  return getStockForSize(product, inventory.stockBySize, item.size);
+}
+
 function groupItems(items: ParsedOrderItem[]) {
   const groupedItems = new Map<string, ParsedOrderItem>();
 
   for (const item of items) {
-    const key = `${item.productId}::${item.size}`;
+    const key = `${item.productId}::${item.color}::${item.size}`;
     const current = groupedItems.get(key);
 
     if (current) {
@@ -295,10 +360,13 @@ function createOrderNumber(id: string) {
 
 function buildOrderItem(
   productId: string,
+  color: string,
   size: string,
   quantity: number,
   product: Record<string, unknown>,
-  unitPrice: number
+  unitPrice: number,
+  priceLabel: FirebaseOrderItem["priceLabel"] = "regular",
+  wholesaleRunApplied = false
 ): FirebaseOrderItem {
   const images = getStringListField(product, "images");
   const mainImage = getStringField(product, "mainImage") || images[0] || "";
@@ -311,15 +379,23 @@ function buildOrderItem(
     slug: getStringField(product, "slug"),
     category: getStringField(product, "category") as MainCategoryName,
     subcategory: getStringField(product, "subcategory"),
+    color,
     size,
     quantity,
     price: unitPrice,
     subtotal: unitPrice * quantity,
     mainImage,
     image: mainImage,
+    regularPrice: getNumberField(product, "price"),
     wholesaleType:
       (getStringField(product, "wholesaleMode") as WholesaleMode) || "none",
     wholesaleMinimum: getNumberField(product, "wholesaleMinQuantity"),
+    wholesaleRunApplied,
+    wholesaleRunPrice:
+      typeof product.wholesaleRunPrice === "number"
+        ? product.wholesaleRunPrice
+        : null,
+    priceLabel,
   };
 }
 
@@ -331,10 +407,17 @@ function getWholesaleProductLike(
     id: productId,
     name: getStringField(product, "name") || "Producto",
     price: getNumberField(product, "price"),
+    sizes: getStringListField(product, "sizes"),
     wholesaleMode: getStringField(product, "wholesaleMode") || "none",
     wholesalePrice:
       typeof product.wholesalePrice === "number" ? product.wholesalePrice : null,
     wholesaleMinQuantity: getNumberField(product, "wholesaleMinQuantity"),
+    wholesaleRunEnabled: Boolean(product.wholesaleRunEnabled),
+    wholesaleRunPrice:
+      typeof product.wholesaleRunPrice === "number"
+        ? product.wholesaleRunPrice
+        : null,
+    wholesaleRunSizes: getStringListField(product, "wholesaleRunSizes"),
   };
 }
 
@@ -371,8 +454,7 @@ async function writeOrderTransaction(
     firestore.collection(SITE_SETTINGS_COLLECTION).doc(SITE_SETTINGS_DOCUMENT)
   );
   const productDataById = new Map<string, Record<string, unknown>>();
-  const stockBySizeById = new Map<string, ProductStockBySize[]>();
-  const nextTotalStockById = new Map<string, number>();
+  const inventoryById = new Map<string, ProductInventoryState>();
 
   groupedItems.forEach((item, index) => {
     const snapshot = productSnapshots[index];
@@ -387,7 +469,8 @@ async function writeOrderTransaction(
     }
 
     const stockBySize = normalizeStockBySize(product.stockBySize);
-    const previousStock = getStockForSize(product, stockBySize, item.size);
+    const inventory = getProductInventoryState(product, stockBySize);
+    const previousStock = getStockForParsedItem(product, inventory, item);
 
     if (previousStock < item.quantity) {
       const productName = getStringField(product, "name") || "Producto";
@@ -397,45 +480,62 @@ async function writeOrderTransaction(
     }
 
     productDataById.set(item.productId, product);
-    stockBySizeById.set(item.productId, stockBySize);
-    nextTotalStockById.set(
-      item.productId,
-      getStockTotal(product, stockBySize)
-    );
+    inventoryById.set(item.productId, inventory);
   });
 
   for (const item of groupedItems) {
     const product = productDataById.get(item.productId);
-    const stockBySize = stockBySizeById.get(item.productId);
+    const inventory = inventoryById.get(item.productId);
 
-    if (!product || !stockBySize) {
+    if (!product || !inventory) {
       throw new SafeOrderError("No se pudo enviar el pedido. Intenta de nuevo.");
     }
 
-    const previousStock = getStockForSize(product, stockBySize, item.size);
+    const previousStock = getStockForParsedItem(product, inventory, item);
     const nextSizeStock = previousStock - item.quantity;
-    const nextTotalStock = Math.max(
-      (nextTotalStockById.get(item.productId) ?? 0) - item.quantity,
-      0
-    );
-    const nextStockBySize = updateStockBySize(
-      stockBySize,
-      item.size,
-      nextSizeStock
-    );
+    let nextStockBySize = inventory.stockBySize;
+    let nextStockByVariant = inventory.stockByVariant;
+    let nextTotalStock = inventory.totalStock;
+
+    if (inventory.usesVariantStock) {
+      nextStockByVariant = {
+        ...inventory.stockByVariant,
+        [item.color]: {
+          ...(inventory.stockByVariant[item.color] ?? {}),
+          [item.size]: Math.max(nextSizeStock, 0),
+        },
+      };
+      nextStockBySize = stockByVariantToStockBySize(
+        nextStockByVariant,
+        inventory.sizes
+      );
+      nextTotalStock = sumStockByVariant(nextStockByVariant);
+    } else {
+      nextTotalStock = Math.max(inventory.totalStock - item.quantity, 0);
+      nextStockBySize = updateStockBySize(
+        inventory.stockBySize,
+        item.size,
+        nextSizeStock
+      );
+    }
     const productRef = firestore.collection(PRODUCTS_COLLECTION).doc(item.productId);
     const movementRef = firestore.collection(STOCK_MOVEMENTS_COLLECTION).doc();
 
     transaction.update(productRef, {
       stock: nextTotalStock,
       stockBySize: nextStockBySize,
+      ...(inventory.usesVariantStock ? { stockByVariant: nextStockByVariant } : {}),
       updatedAt: FieldValue.serverTimestamp(),
     });
     transaction.set(movementRef, {
       type: "web_order",
       productId: item.productId,
       productName: getStringField(product, "name") || "Producto",
+      color: item.color,
       size: item.size,
+      previousQuantity: previousStock,
+      newQuantity: Math.max(nextSizeStock, 0),
+      difference: -item.quantity,
       quantityChange: -item.quantity,
       previousStock,
       newStock: Math.max(nextSizeStock, 0),
@@ -446,8 +546,12 @@ async function writeOrderTransaction(
       createdBy: "web",
     });
 
-    stockBySizeById.set(item.productId, nextStockBySize);
-    nextTotalStockById.set(item.productId, nextTotalStock);
+    inventoryById.set(item.productId, {
+      ...inventory,
+      stockBySize: nextStockBySize,
+      stockByVariant: nextStockByVariant,
+      totalStock: nextTotalStock,
+    });
   }
 
   const wholesaleSettings = normalizeWholesaleSettings(
@@ -465,38 +569,70 @@ async function writeOrderTransaction(
 
       return {
         productId: item.productId,
+        color: item.color,
+        size: item.size,
         product: getWholesaleProductLike(item.productId, product),
         quantity: item.quantity,
       };
     }),
     wholesaleSettings
   );
-  const priceByProductId = new Map(
-    pricedLines.map((line) => [line.item.productId, line.unitPrice])
-  );
-
-  const orderItems = groupedItems.map((item) => {
-    const product = productDataById.get(item.productId);
+  const orderItems = pricedLines.flatMap((line) => {
+    const item = line.item;
+    const product = productDataById.get(item.productId ?? "");
 
     if (!product) {
       throw new SafeOrderError("No se pudo enviar el pedido. Intenta de nuevo.");
     }
 
-    const unitPrice =
-      priceByProductId.get(item.productId) ?? getNumberField(product, "price");
+    const orderLineItems: FirebaseOrderItem[] = [];
+    const productId = item.productId ?? "";
+    const color = item.color ?? "Sin color";
+    const size = item.size ?? "Unitalla";
 
-    return buildOrderItem(
-      item.productId,
-      item.size,
-      item.quantity,
-      product,
-      unitPrice
-    );
+    if (line.wholesaleQuantity > 0) {
+      const unitPrice =
+        item.product.wholesaleRunEnabled && item.product.wholesaleRunPrice
+          ? item.product.wholesaleRunPrice
+          : line.unitPrice;
+
+      orderLineItems.push(
+        buildOrderItem(
+          productId,
+          color,
+          size,
+          line.wholesaleQuantity,
+          product,
+          unitPrice,
+          item.product.wholesaleRunEnabled ? "wholesale_run" : "wholesale",
+          Boolean(item.product.wholesaleRunEnabled)
+        )
+      );
+    }
+
+    if (line.regularQuantity > 0) {
+      orderLineItems.push(
+        buildOrderItem(
+          productId,
+          color,
+          size,
+          line.regularQuantity,
+          product,
+          getNumberField(product, "price"),
+          "regular",
+          false
+        )
+      );
+    }
+
+    return orderLineItems;
   });
   const subtotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
   const totalItems = orderItems.reduce((sum, item) => sum + item.quantity, 0);
   const hasWholesale = orderItems.some(
-    (item) => item.wholesaleType && item.wholesaleType !== "none"
+    (item) =>
+      item.wholesaleRunApplied ||
+      (item.wholesaleType && item.wholesaleType !== "none")
   );
   const shipping = calculateOrderShipping({
     method: order.deliveryMethod,

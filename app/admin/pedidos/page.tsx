@@ -112,18 +112,31 @@ function getShippingCost(order: FirebaseOrder) {
   return order.shippingCost ?? order.shipping?.cost ?? 0;
 }
 
+function orderRequiresShippingQuote(order: FirebaseOrder) {
+  return Boolean(order.shipping?.requiresQuote);
+}
+
 function formatOrderShipping(order: FirebaseOrder) {
-  if (order.shipping?.requiresQuote) return "A cotizar";
+  if (orderRequiresShippingQuote(order)) return "Pendiente de cotizar";
   return formatPrice(getShippingCost(order));
+}
+
+function getOrderPayableProductsTotal(order: FirebaseOrder) {
+  return orderRequiresShippingQuote(order) ? order.subtotal : order.total;
 }
 
 function getPaymentStatusLabel(order: FirebaseOrder) {
   const status = order.payment?.status;
+  const quoteShipping = orderRequiresShippingQuote(order);
 
-  if (status === "paid") return "Pagado";
-  if (status === "pending") return "Pendiente";
+  if (status === "paid") return quoteShipping ? "Pagado: productos" : "Pagado";
+  if (status === "pending") {
+    return quoteShipping ? "Pendiente: productos" : "Pendiente";
+  }
   if (status === "failed") return "Fallido";
-  if (status === "manual") return "Manual / WhatsApp";
+  if (status === "manual") {
+    return quoteShipping ? "Pago de productos por acordar" : "Manual / WhatsApp";
+  }
   return "No registrado";
 }
 
@@ -136,6 +149,12 @@ function getPaymentProviderLabel(order: FirebaseOrder) {
 }
 
 function getPaymentBadgeLabel(order: FirebaseOrder) {
+  if (orderRequiresShippingQuote(order)) {
+    if (order.payment?.status === "paid") return "Pago recibido: productos";
+    if (order.payment?.status === "pending") return "Pago de productos pendiente";
+    return "Pago de productos";
+  }
+
   if (order.payment?.status === "paid") return "Pago confirmado";
   return getPaymentStatusLabel(order);
 }
@@ -219,8 +238,15 @@ function buildCustomerMessage(order: FirebaseOrder) {
           .filter(Boolean)
           .join("\n\n");
   const quoteText = order.shipping?.requiresQuote
-    ? "\n\nEl envío se confirmará por WhatsApp."
+    ? "\n\nEl envío queda pendiente de cotización y pago por separado."
     : "";
+  const totalsText = orderRequiresShippingQuote(order)
+    ? `Total de productos: ${formatPrice(order.subtotal)}
+Envío: Pendiente de cotizar
+Pago de productos: ${formatPrice(getOrderPayableProductsTotal(order))}`
+    : `Subtotal: ${formatPrice(order.subtotal)}
+Envío: ${formatOrderShipping(order)}
+Total: ${formatPrice(order.total)}`;
 
   return `Hola ${order.customerName || "buen día"}, te escribo de Charly Alexa sobre tu pedido #${getOrderFolio(order)}.
 
@@ -229,9 +255,7 @@ ${deliveryText}
 Productos:
 ${productsText}
 
-Subtotal: ${formatPrice(order.subtotal)}
-Envío: ${formatOrderShipping(order)}
-Total: ${formatPrice(order.total)}
+${totalsText}
 Estado de pago: ${getPaymentStatusLabel(order)}
 Método de pago: ${getPaymentProviderLabel(order)}${quoteText}
 
@@ -583,10 +607,12 @@ export default function AdminOrdersPage() {
 
                   <div className="rounded-2xl bg-[#fffaf5] px-3 py-2 ring-1 ring-rose-100 sm:px-4 sm:py-3 sm:text-right">
                     <p className="text-xs font-black uppercase text-slate-500">
-                      Total
+                      {orderRequiresShippingQuote(order)
+                        ? "Pago de productos"
+                        : "Total"}
                     </p>
                     <p className="mt-1 text-lg font-black text-slate-950 sm:text-xl">
-                      {formatPrice(order.total)}
+                      {formatPrice(getOrderPayableProductsTotal(order))}
                     </p>
                   </div>
                 </div>
@@ -709,10 +735,12 @@ export default function AdminOrdersPage() {
                 </div>
                 <div className="rounded-xl bg-[#fffaf5] p-2 sm:rounded-2xl sm:p-4">
                   <p className="text-[10px] font-black uppercase text-slate-500 sm:text-xs">
-                    Total
+                    {orderRequiresShippingQuote(order)
+                      ? "Pago de productos"
+                      : "Total"}
                   </p>
                   <p className="mt-1 break-words text-sm font-black text-slate-950 sm:text-2xl">
-                    {formatPrice(order.total)}
+                    {formatPrice(getOrderPayableProductsTotal(order))}
                   </p>
                 </div>
                 <div className="rounded-xl bg-[#fffaf5] p-2 sm:rounded-2xl sm:p-4">
@@ -828,7 +856,9 @@ export default function AdminOrdersPage() {
                     {getPaymentAmountPaid(order) !== null && (
                       <div className="rounded-2xl bg-white p-3">
                         <p className="text-xs font-black uppercase text-slate-400">
-                          Monto pagado
+                          {orderRequiresShippingQuote(order)
+                            ? "Pago recibido: productos"
+                            : "Monto pagado"}
                         </p>
                         <p className="mt-1 text-sm font-black text-slate-950">
                           {formatPrice(getPaymentAmountPaid(order) ?? 0)}
@@ -848,7 +878,9 @@ export default function AdminOrdersPage() {
                         Cotización de envío
                       </p>
                       <p className="mt-1 text-sm font-black text-slate-950">
-                        {order.shipping?.requiresQuote ? "Requiere cotización" : "No requiere"}
+                        {orderRequiresShippingQuote(order)
+                          ? "Pendiente de cotizar"
+                          : "No requiere"}
                       </p>
                     </div>
                     <div className="rounded-2xl bg-white p-3">
@@ -936,26 +968,49 @@ export default function AdminOrdersPage() {
                     <p className="text-xs font-black uppercase text-slate-400">
                       Totales
                     </p>
-                    <div className="mt-2 space-y-2 text-sm font-bold text-slate-600">
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Subtotal</span>
-                        <span className="font-black text-slate-950">
-                          {formatPrice(order.subtotal)}
-                        </span>
+                    {orderRequiresShippingQuote(order) ? (
+                      <div className="mt-2 space-y-2 text-sm font-bold text-slate-600">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Total de productos</span>
+                          <span className="font-black text-slate-950">
+                            {formatPrice(order.subtotal)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Envío</span>
+                          <span className="text-right font-black text-amber-700">
+                            Pendiente de cotizar
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
+                          <span>Pago de productos</span>
+                          <span className="text-xl font-black text-slate-950">
+                            {formatPrice(getOrderPayableProductsTotal(order))}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>Envío</span>
-                        <span className="font-black text-slate-950">
-                          {formatOrderShipping(order)}
-                        </span>
+                    ) : (
+                      <div className="mt-2 space-y-2 text-sm font-bold text-slate-600">
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Subtotal</span>
+                          <span className="font-black text-slate-950">
+                            {formatPrice(order.subtotal)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>Envío</span>
+                          <span className="font-black text-slate-950">
+                            {formatOrderShipping(order)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
+                          <span>Total</span>
+                          <span className="text-xl font-black text-slate-950">
+                            {formatPrice(order.total)}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
-                        <span>Total</span>
-                        <span className="text-xl font-black text-slate-950">
-                          {formatPrice(order.total)}
-                        </span>
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
               )}

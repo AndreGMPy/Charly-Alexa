@@ -43,6 +43,7 @@ type PreferenceItem = {
 type PaymentProduct = {
   productId: string;
   title: string;
+  color: string;
   size: string;
   quantity: number;
   price: number;
@@ -51,6 +52,7 @@ type PaymentProduct = {
 
 type PaymentCartLine = {
   productId: string;
+  color: string;
   size: string;
   quantity: number;
   product: WholesaleProductLike;
@@ -120,11 +122,12 @@ function getOrderItems(data: Record<string, unknown>) {
 
     const productId = readString(item.productId, 140);
     const quantity = readPositiveInteger(item.quantity);
+    const color = readString(item.color, 80) || "Sin color";
     const size = readString(item.size, 60) || "Unitalla";
 
     if (!productId || !quantity) return null;
 
-    return { productId, quantity, size };
+    return { productId, quantity, color, size };
   });
 }
 
@@ -181,23 +184,38 @@ async function recalculateOrderForPayment(
     totalItems += item.quantity;
     hasWholesale =
       hasWholesale ||
+      Boolean(product.wholesaleRunEnabled) ||
       (readString(product.wholesaleMode, 40) !== "" &&
         readString(product.wholesaleMode, 40) !== "none");
 
     cartLines.push({
       productId: item.productId,
+      color: item.color,
       size: item.size,
       quantity: item.quantity,
       product: {
         id: item.productId,
         name: title,
         price,
+        sizes: Array.isArray(product.sizes)
+          ? product.sizes.filter((size): size is string => typeof size === "string")
+          : [],
         wholesaleMode: readString(product.wholesaleMode, 40) || "none",
         wholesalePrice:
           typeof product.wholesalePrice === "number"
             ? product.wholesalePrice
             : null,
         wholesaleMinQuantity: readNumber(product.wholesaleMinQuantity),
+        wholesaleRunEnabled: Boolean(product.wholesaleRunEnabled),
+        wholesaleRunPrice:
+          typeof product.wholesaleRunPrice === "number"
+            ? product.wholesaleRunPrice
+            : null,
+        wholesaleRunSizes: Array.isArray(product.wholesaleRunSizes)
+          ? product.wholesaleRunSizes.filter(
+              (size): size is string => typeof size === "string"
+            )
+          : [],
       },
     });
   });
@@ -209,14 +227,34 @@ async function recalculateOrderForPayment(
 
     subtotal += line.subtotal;
 
-    paymentProducts.push({
-      productId: item.productId,
-      title: item.product.name,
-      size: item.size,
-      quantity: item.quantity,
-      price: line.unitPrice,
-      subtotal: line.subtotal,
-    });
+    if (line.wholesaleQuantity > 0) {
+      const unitPrice =
+        item.product.wholesaleRunEnabled && item.product.wholesaleRunPrice
+          ? item.product.wholesaleRunPrice
+          : line.unitPrice;
+
+      paymentProducts.push({
+        productId: item.productId,
+        title: item.product.name,
+        color: item.color,
+        size: item.size,
+        quantity: line.wholesaleQuantity,
+        price: unitPrice,
+        subtotal: unitPrice * line.wholesaleQuantity,
+      });
+    }
+
+    if (line.regularQuantity > 0) {
+      paymentProducts.push({
+        productId: item.productId,
+        title: item.product.name,
+        color: item.color,
+        size: item.size,
+        quantity: line.regularQuantity,
+        price: item.product.price,
+        subtotal: item.product.price * line.regularQuantity,
+      });
+    }
   });
 
   const shipping = calculateOrderShipping({
@@ -224,15 +262,16 @@ async function recalculateOrderForPayment(
     totalItems,
     hasWholesale,
   });
+  const payableShipping = shipping.requiresQuote ? { ...shipping, cost: 0 } : shipping;
 
-  const shippingDescription = shipping.requiresQuote
-    ? "Envio a cotizar con la tienda"
-    : shipping.cost > 0
+  const shippingDescription = payableShipping.requiresQuote
+    ? "Productos Charly Alexa. Envío pendiente de cotización por WhatsApp."
+    : payableShipping.cost > 0
       ? "Envio nacional incluido en el pedido"
       : "Sin cargo de envio automatico";
   const preferenceItems: PreferenceItem[] = paymentProducts.map((item) => ({
     id: item.productId,
-    title: `${item.title} - Talla ${item.size}`,
+    title: `${item.title} - ${item.color} - Talla ${item.size}`,
     description: `Cantidad: ${item.quantity} · Subtotal: ${formatCurrency(
       item.subtotal
     )} · ${shippingDescription}`,
@@ -241,7 +280,7 @@ async function recalculateOrderForPayment(
     currency_id: "MXN",
   }));
 
-  if (!shipping.requiresQuote && shipping.cost > 0) {
+  if (!payableShipping.requiresQuote && payableShipping.cost > 0) {
     preferenceItems.push({
       title:
         deliveryMethod === NATIONAL_DELIVERY_METHOD
@@ -249,12 +288,12 @@ async function recalculateOrderForPayment(
           : "Envio",
       description: "Costo de envio del pedido",
       quantity: 1,
-      unit_price: shipping.cost,
+      unit_price: payableShipping.cost,
       currency_id: "MXN",
     });
   }
 
-  const total = subtotal + shipping.cost;
+  const total = subtotal + payableShipping.cost;
 
   if (subtotal <= 0 || total <= 0) {
     throw new Error("invalid-order");
@@ -263,7 +302,7 @@ async function recalculateOrderForPayment(
   return {
     preferenceItems,
     subtotal,
-    shipping,
+    shipping: payableShipping,
     total,
     orderNumber:
       readString(order.orderNumber, 40) || orderId.slice(-6).toUpperCase(),

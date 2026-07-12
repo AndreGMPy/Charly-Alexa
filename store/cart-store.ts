@@ -11,6 +11,7 @@ export type CartItem = {
   slug: string;
   name: string;
   price: number;
+  selectedColor?: string;
   selectedSize: string;
   quantity: number;
   category: Product["category"];
@@ -20,6 +21,7 @@ export type CartItem = {
 
 type AddItemOptions = {
   selectedSize: string;
+  selectedColor?: string;
   quantity?: number;
 };
 
@@ -53,8 +55,9 @@ export const useCartStore = create<CartStore>()(
 
       addItem: (product, options) => {
         const selectedSize = options.selectedSize;
+        const selectedColor = options.selectedColor?.trim() || product.colors[0] || "Sin color";
         const quantityToAdd = Math.max(1, options.quantity ?? 1);
-        const cartItemId = `${product.id}-${selectedSize}`;
+        const cartItemId = `${product.id}-${selectedColor}-${selectedSize}`;
 
         set((state) => {
           const existingItem = state.items.find(
@@ -81,6 +84,7 @@ export const useCartStore = create<CartStore>()(
             slug: product.slug,
             name: product.name,
             price: product.price,
+            selectedColor,
             selectedSize,
             quantity: quantityToAdd,
             category: product.category,

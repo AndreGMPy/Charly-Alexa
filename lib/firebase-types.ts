@@ -1,4 +1,5 @@
 import type { Timestamp } from "firebase/firestore";
+import type { StockByVariant } from "@/lib/variant-utils";
 
 export type FirebaseDate = Timestamp | Date | string | null;
 
@@ -9,6 +10,8 @@ export type WholesaleMode = "none" | "surtido" | "producto" | "mixed" | "product
 export type MainCategoryName = "Niña" | "Niño" | "Unisex";
 
 export type ProductSection = "nina" | "nino" | "unisex";
+
+export type ProductCategoryValue = MainCategoryName | ProductSection;
 
 export type HomeSection = "ofertas" | "novedades" | "temporada" | null;
 
@@ -79,16 +82,21 @@ export type FirebaseProduct = {
   name: string;
   description: string;
   longDescription: string;
-  category: MainCategoryName;
+  category: ProductCategoryValue;
   sections?: ProductSection[];
   subcategory: string;
+  subcategories?: string[];
   price: number;
   basePrice?: number;
   paymentFeePercent?: number;
+  wholesaleRunEnabled?: boolean;
+  wholesaleRunPrice?: number | null;
+  wholesaleRunSizes?: string[];
   sizes: string[];
   colors: string[];
   stock: number;
   stockBySize: ProductSizeStock[];
+  stockByVariant?: StockByVariant;
   images: string[];
   mainImage: string;
   isOffer: boolean;
@@ -137,7 +145,7 @@ export type FirebaseOrderItem = {
   slug: string;
   name?: string;
   productName?: string;
-  category?: MainCategoryName;
+  category?: ProductCategoryValue;
   subcategory?: string;
   size: string;
   color?: string;
@@ -148,6 +156,10 @@ export type FirebaseOrderItem = {
   subtotal: number;
   wholesaleType?: WholesaleMode;
   wholesaleMinimum?: number;
+  regularPrice?: number;
+  wholesaleRunApplied?: boolean;
+  wholesaleRunPrice?: number | null;
+  priceLabel?: "regular" | "wholesale" | "wholesale_run";
 };
 
 export type FirebaseCustomer = {
@@ -199,4 +211,15 @@ export type FirebaseOrder = {
   updatedAt: FirebaseDate;
 };
 
-export type PaymentMethod = "Efectivo" | "Transferencia" | "Tarjeta" | "Otro";
+export type PaymentMethod =
+  | "Efectivo"
+  | "Transferencia"
+  | "Tarjeta"
+  | "Mixto"
+  | "Otro";
+
+export type PaymentBreakdown = {
+  cash: number;
+  transfer: number;
+  card: number;
+};

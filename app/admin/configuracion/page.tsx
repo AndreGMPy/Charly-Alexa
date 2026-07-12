@@ -75,6 +75,12 @@ export default function AdminSettingsPage() {
             wholesaleInfoText:
               settings.wholesaleSettings?.wholesaleInfoText ||
               defaultSettings.wholesaleSettings.wholesaleInfoText,
+            wholesaleRunInfoText:
+              settings.wholesaleSettings?.wholesaleRunInfoText ||
+              defaultSettings.wholesaleSettings.wholesaleRunInfoText,
+            publicWholesaleEnabled:
+              settings.wholesaleSettings?.publicWholesaleEnabled ??
+              defaultSettings.wholesaleSettings.publicWholesaleEnabled,
           },
           social: {
             instagram: settings.social?.instagram ?? "",
@@ -289,7 +295,7 @@ export default function AdminSettingsPage() {
             Configuración de mayoreo
           </h2>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Define cuándo se activa el mayoreo surtido en carrito y ventas.
+            Define el texto general y si el mayoreo corrido se muestra en la tienda pública.
           </p>
         </div>
 
@@ -297,10 +303,44 @@ export default function AdminSettingsPage() {
           <label className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[#fffaf5] px-4 py-3 ring-1 ring-rose-100">
             <span className="min-w-0">
               <span className="block text-sm font-black text-slate-800">
-                Activar mayoreo surtido
+                Activar mayoreo público
               </span>
               <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
-                Permite combinar productos marcados como mayoreo surtido.
+                Permite mostrar la compra por corrida en productos configurados.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={form.wholesaleSettings.publicWholesaleEnabled ?? true}
+              onChange={(event) =>
+                updateWholesaleField(
+                  "publicWholesaleEnabled",
+                  event.target.checked
+                )
+              }
+              className="h-5 w-5 shrink-0 accent-rose-500"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className={labelClass}>Nota de mayoreo corrido</span>
+            <input
+              value={form.wholesaleSettings.wholesaleRunInfoText ?? ""}
+              onChange={(event) =>
+                updateWholesaleField("wholesaleRunInfoText", event.target.value)
+              }
+              className={fieldClass}
+              placeholder="El mayoreo corrido aplica comprando 1 pieza de cada talla del mismo color."
+            />
+          </label>
+
+          <label className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[#fffaf5] px-4 py-3 ring-1 ring-rose-100">
+            <span className="min-w-0">
+              <span className="block text-sm font-black text-slate-800">
+                Mantener mayoreo surtido heredado
+              </span>
+              <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                Solo para productos antiguos que todavía usen esa regla.
               </span>
             </span>
             <input
@@ -317,7 +357,7 @@ export default function AdminSettingsPage() {
           </label>
 
           <label className="space-y-2">
-            <span className={labelClass}>Mínimo general surtido</span>
+            <span className={labelClass}>Mínimo general heredado</span>
             <input
               value={form.wholesaleSettings.mixedWholesaleMinQuantity}
               onChange={(event) =>
@@ -333,14 +373,14 @@ export default function AdminSettingsPage() {
           </label>
 
           <label className="space-y-2 lg:col-span-2">
-            <span className={labelClass}>Texto informativo de mayoreo</span>
+            <span className={labelClass}>Texto general de mayoreo</span>
             <input
               value={form.wholesaleSettings.wholesaleInfoText}
               onChange={(event) =>
                 updateWholesaleField("wholesaleInfoText", event.target.value)
               }
               className={fieldClass}
-              placeholder="Ej. Mayoreo disponible desde 6 piezas surtidas."
+              placeholder="El mayoreo corrido aplica en prendas seleccionadas comprando 1 pieza de cada talla disponible del mismo color."
             />
           </label>
         </div>

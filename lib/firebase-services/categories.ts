@@ -39,18 +39,20 @@ export type SubcategoryUpdateInput = Partial<
 
 const CATEGORIES_COLLECTION = "categories";
 const SUBCATEGORIES_COLLECTION = "subcategories";
-const BASE_CATEGORY_IDS: Record<MainCategoryName, string> = {
+type ManagedMainCategoryName = Exclude<MainCategoryName, "Unisex">;
+
+const BASE_CATEGORY_IDS: Record<ManagedMainCategoryName, string> = {
   Niña: "nina",
   Niño: "nino",
-  Unisex: "unisex",
 };
 
 const BASE_CATEGORIES: Array<
-  Omit<FirebaseCategory, "id" | "createdAt" | "updatedAt">
+  Omit<FirebaseCategory, "id" | "createdAt" | "updatedAt" | "name"> & {
+    name: ManagedMainCategoryName;
+  }
 > = [
   { name: "Niña", slug: "nina", isActive: true, sortOrder: 1 },
   { name: "Niño", slug: "nino", isActive: true, sortOrder: 2 },
-  { name: "Unisex", slug: "unisex", isActive: true, sortOrder: 3 },
 ];
 
 function ensureFirebaseConfigured() {

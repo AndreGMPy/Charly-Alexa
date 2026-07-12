@@ -1,6 +1,13 @@
 import { db, isFirebaseConfigured } from "@/lib/firebase";
-import type { FirebaseProduct, ProductSection } from "@/lib/firebase-types";
-import { categoryToSection, productAppearsInSection } from "@/lib/products";
+import type { FirebaseProduct } from "@/lib/firebase-types";
+import {
+  categoryToSection,
+  normalizeProductCategory,
+  normalizeProductSections,
+  normalizeProductSubcategories,
+  productMatchesSubcategory,
+  productAppearsInSection,
+} from "@/lib/products";
 import {
   addDoc,
   collection,
@@ -16,6 +23,13 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import {
+  cleanList,
+  normalizeStockBySize,
+  normalizeStockByVariant,
+  stockByVariantToStockBySize,
+  sumStockByVariant,
+} from "@/lib/variant-utils";
 
 export type ProductCreateInput = Omit<
   FirebaseProduct,
@@ -41,12 +55,24 @@ function ensureFirebaseConfigured() {
   return db;
 }
 
-function isProductSection(value: unknown): value is ProductSection {
-  return value === "nina" || value === "nino" || value === "unisex";
+function getSections(
+  sections: unknown,
+  category: FirebaseProduct["category"] | undefined
+) {
+  return normalizeProductSections({ sections, category });
 }
 
-function getSections(value: unknown) {
-  return Array.isArray(value) ? Array.from(new Set(value.filter(isProductSection))) : [];
+function getSubcategories(value: unknown) {
+  return Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value.filter(
+            (subcategory): subcategory is string =>
+              typeof subcategory === "string" && subcategory.trim().length > 0
+          )
+        )
+      )
+    : [];
 }
 
 function mapProductDoc(
@@ -54,22 +80,56 @@ function mapProductDoc(
 ): FirebaseProduct {
   const data = snapshot.data() as Partial<FirebaseProduct>;
 
+  const sections = getSections(data.sections, data.category);
+  const sizes = cleanList(data.sizes, []);
+  const colors = cleanList(data.colors, []);
+  const stockBySize = normalizeStockBySize(data.stockBySize);
+  const stockByVariant = normalizeStockByVariant(
+    data.stockByVariant,
+    colors,
+    sizes,
+    stockBySize,
+    data.stock ?? 0
+  );
+  const stockBySizeFromVariant =
+    data.stockByVariant && Object.keys(data.stockByVariant).length > 0
+      ? stockByVariantToStockBySize(
+          stockByVariant,
+          sizes.length > 0 ? sizes : stockBySize.map((item) => item.size)
+        )
+      : stockBySize;
+  const totalStock =
+    data.stockByVariant && Object.keys(data.stockByVariant).length > 0
+      ? sumStockByVariant(stockByVariant)
+      : data.stock ?? stockBySize.reduce((total, item) => total + item.stock, 0);
+
   return {
     id: snapshot.id,
     slug: data.slug ?? "",
     name: data.name ?? "",
     description: data.description ?? "",
     longDescription: data.longDescription ?? "",
-    category: data.category ?? "Unisex",
-    sections: getSections(data.sections),
+    category: normalizeProductCategory(data.category),
+    sections,
     subcategory: data.subcategory ?? "",
+    subcategories: normalizeProductSubcategories({
+      subcategories: getSubcategories(data.subcategories),
+      subcategory: data.subcategory,
+      sections: data.sections,
+      category: data.category,
+    }),
     price: data.price ?? 0,
     basePrice: data.basePrice,
     paymentFeePercent: data.paymentFeePercent,
-    sizes: data.sizes ?? [],
-    colors: data.colors ?? [],
-    stock: data.stock ?? 0,
-    stockBySize: data.stockBySize ?? [],
+    wholesaleRunEnabled: Boolean(data.wholesaleRunEnabled),
+    wholesaleRunPrice:
+      typeof data.wholesaleRunPrice === "number" ? data.wholesaleRunPrice : null,
+    wholesaleRunSizes: cleanList(data.wholesaleRunSizes, []),
+    sizes,
+    colors,
+    stock: totalStock,
+    stockBySize: stockBySizeFromVariant,
+    stockByVariant,
     images: data.images ?? [],
     mainImage: data.mainImage ?? "",
     isOffer: Boolean(data.isOffer),
@@ -196,7 +256,7 @@ export async function getProductsBySubcategory(
 
       return (
         Boolean(section && productAppearsInSection(product, section)) &&
-        product.subcategory.trim().toLowerCase() === normalizedSubcategory
+        productMatchesSubcategory(product, normalizedSubcategory)
       );
     }
   );
@@ -242,6 +302,10 @@ export async function createProduct(product: ProductCreateInput) {
     wholesalePrice: product.wholesalePrice ?? null,
     wholesaleMinQuantity: product.wholesaleMinQuantity ?? 0,
     wholesaleNote: product.wholesaleNote ?? "",
+    wholesaleRunEnabled: product.wholesaleRunEnabled ?? false,
+    wholesaleRunPrice: product.wholesaleRunPrice ?? null,
+    wholesaleRunSizes: product.wholesaleRunSizes ?? [],
+    stockByVariant: product.stockByVariant ?? {},
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };

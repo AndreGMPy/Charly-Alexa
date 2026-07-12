@@ -4,6 +4,7 @@ import {
   getAvailabilityLabel,
   getProductBadges,
   getSectionLabels,
+  getSubcategoryLabels,
   type Product,
 } from "@/lib/products";
 import { getWholesaleLabel } from "@/lib/wholesale";
@@ -115,7 +116,8 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
         </div>
 
         <p className="text-[11px] font-black uppercase text-slate-400 sm:text-xs">
-          {getSectionLabels(product) || product.category} · {product.subcategory}
+          {getSectionLabels(product) || product.category} ·{" "}
+          {getSubcategoryLabels(product) || product.subcategory}
         </p>
 
         <Link href={productHref}>

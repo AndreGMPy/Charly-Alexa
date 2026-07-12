@@ -1,3 +1,9 @@
+import type { StockByVariant } from "@/lib/variant-utils";
+import {
+  getStockForSizeAcrossColors,
+  getStockForVariant,
+} from "@/lib/variant-utils";
+
 export type ProductCategory = "Niño" | "Niña" | "Unisex";
 
 export type ProductSection = "nina" | "nino" | "unisex";
@@ -35,7 +41,9 @@ export type Product = {
   category: ProductCategory;
   sections?: ProductSection[];
   subcategory: ProductSubcategory;
+  subcategories?: ProductSubcategory[];
   price: number;
+  basePrice?: number;
   sizes: string[];
   colors: string[];
   brand: string;
@@ -48,6 +56,7 @@ export type Product = {
     size: string;
     stock: number;
   }[];
+  stockByVariant?: StockByVariant;
   gradient: string;
   galleryGradients: string[];
   imageUrl?: string;
@@ -63,6 +72,9 @@ export type Product = {
   wholesalePrice?: number | null;
   wholesaleMinQuantity?: number;
   wholesaleNote?: string;
+  wholesaleRunEnabled?: boolean;
+  wholesaleRunPrice?: number | null;
+  wholesaleRunSizes?: string[];
 };
 
 export const sizeOptions = [
@@ -94,13 +106,17 @@ export const priceFilters: PriceFilter[] = [
 ];
 
 export const subcategories: ProductSubcategory[] = [
-  "Playeras",
-  "Pantalones",
-  "Vestidos",
   "Conjuntos",
+  "Playeras",
   "Chamarras",
+  "Pantalones",
+  "Shorts",
+  "Sudaderas",
+  "Vestidos",
   "Fiesta",
   "Accesorios",
+  "Básicos",
+  "Unisex",
 ];
 
 /**
@@ -133,7 +149,7 @@ export function isPublicStoreProduct(product: PublicProductLike) {
   );
 }
 
-export const mainCategories: ProductCategory[] = ["Niño", "Niña", "Unisex"];
+export const mainCategories: ProductCategory[] = ["Niño", "Niña"];
 
 export const sectionOptions: Array<{
   value: ProductSection;
@@ -141,15 +157,20 @@ export const sectionOptions: Array<{
 }> = [
   { value: "nina", label: "Niña" },
   { value: "nino", label: "Niño" },
-  { value: "unisex", label: "Unisex" },
 ];
 
 export function categoryToSection(
   category?: ProductCategory | string | null
 ): ProductSection | null {
-  if (category === "Niña") return "nina";
-  if (category === "Niño") return "nino";
-  if (category === "Unisex") return "unisex";
+  const normalizedCategory = category
+    ?.normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+
+  if (normalizedCategory === "nina") return "nina";
+  if (normalizedCategory === "nino") return "nino";
+  if (normalizedCategory === "unisex") return "unisex";
   return null;
 }
 
@@ -159,6 +180,17 @@ export function sectionToCategory(section: ProductSection): ProductCategory {
   return "Unisex";
 }
 
+export function normalizeProductCategory(
+  category?: ProductCategory | string | null
+): ProductCategory {
+  const section = categoryToSection(category);
+  if (section === "nina" || section === "nino") {
+    return sectionToCategory(section);
+  }
+
+  return "Niña";
+}
+
 function isProductSection(value: unknown): value is ProductSection {
   return value === "nina" || value === "nino" || value === "unisex";
 }
@@ -166,16 +198,28 @@ function isProductSection(value: unknown): value is ProductSection {
 export function normalizeProductSections(product: {
   sections?: unknown;
   category?: ProductCategory | string | null;
-}) {
+}): ProductSection[] {
   const savedSections = Array.isArray(product.sections)
     ? product.sections.filter(isProductSection)
     : [];
+  const sections = new Set<ProductSection>();
 
-  if (savedSections.length > 0) {
-    return Array.from(new Set(savedSections));
+  for (const section of savedSections) {
+    if (section === "unisex") {
+      sections.add("nina");
+      sections.add("nino");
+    } else {
+      sections.add(section);
+    }
+  }
+
+  if (sections.size > 0) {
+    return Array.from(sections);
   }
 
   const fallbackSection = categoryToSection(product.category);
+  if (fallbackSection === "unisex") return ["nina", "nino"];
+
   return fallbackSection ? [fallbackSection] : [];
 }
 
@@ -190,15 +234,12 @@ export function primaryCategoryFromSections(
   sections: ProductSection[],
   fallback: ProductCategory = "Niña"
 ) {
-  const [firstSection] = sections;
+  const normalizedSections = normalizeProductSections({ sections, category: fallback });
+  const [firstSection] = normalizedSections;
 
-  if (firstSection && firstSection !== "unisex") {
+  if (firstSection) {
     return sectionToCategory(firstSection);
   }
-
-  if (sections.includes("nina")) return "Niña";
-  if (sections.includes("nino")) return "Niño";
-  if (firstSection) return sectionToCategory(firstSection);
 
   return fallback;
 }
@@ -210,6 +251,82 @@ export function getSectionLabels(product: {
   return normalizeProductSections(product)
     .map(sectionToCategory)
     .join(", ");
+}
+
+function normalizeTextValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function hasLegacyUnisexSection(product: {
+  sections?: unknown;
+  category?: ProductCategory | string | null;
+}) {
+  const savedSections = Array.isArray(product.sections) ? product.sections : [];
+  return (
+    savedSections.includes("unisex") || categoryToSection(product.category) === "unisex"
+  );
+}
+
+export function normalizeProductSubcategories(product: {
+  subcategories?: unknown;
+  subcategory?: ProductSubcategory | string | null;
+  sections?: unknown;
+  category?: ProductCategory | string | null;
+}) {
+  const values = Array.isArray(product.subcategories)
+    ? product.subcategories.filter(
+        (subcategory): subcategory is string =>
+          typeof subcategory === "string" && subcategory.trim().length > 0
+      )
+    : [];
+
+  if (typeof product.subcategory === "string" && product.subcategory.trim()) {
+    values.push(product.subcategory.trim());
+  }
+
+  if (hasLegacyUnisexSection(product)) {
+    values.push("Unisex");
+  }
+
+  const uniqueValues = new Map<string, string>();
+
+  for (const value of values) {
+    const cleanValue = value.trim();
+    const key = normalizeTextValue(cleanValue);
+    if (!key || uniqueValues.has(key)) continue;
+    uniqueValues.set(key, cleanValue);
+  }
+
+  return Array.from(uniqueValues.values());
+}
+
+export function productMatchesSubcategory(
+  product: {
+    subcategories?: unknown;
+    subcategory?: ProductSubcategory | string | null;
+    sections?: unknown;
+    category?: ProductCategory | string | null;
+  },
+  subcategory: string
+) {
+  const normalizedSubcategory = normalizeTextValue(subcategory);
+
+  return normalizeProductSubcategories(product).some(
+    (item) => normalizeTextValue(item) === normalizedSubcategory
+  );
+}
+
+export function getSubcategoryLabels(product: {
+  subcategories?: unknown;
+  subcategory?: ProductSubcategory | string | null;
+  sections?: unknown;
+  category?: ProductCategory | string | null;
+}) {
+  return normalizeProductSubcategories(product).join(", ");
 }
 
 export const colorOptions = [
@@ -248,6 +365,7 @@ export function getProductsByAudience(audience: "Niña" | "Niño") {
 
 export function getRelatedProducts(product: Product) {
   const productSections = normalizeProductSections(product);
+  const productSubcategories = normalizeProductSubcategories(product);
 
   return products
     .filter(
@@ -257,7 +375,9 @@ export function getRelatedProducts(product: Product) {
         (normalizeProductSections(item).some((section) =>
           productSections.includes(section)
         ) ||
-          item.subcategory === product.subcategory)
+          productSubcategories.some((subcategory) =>
+            productMatchesSubcategory(item, subcategory)
+          ))
     )
     .slice(0, 3);
 }
@@ -283,6 +403,10 @@ export function getAvailabilityLabel(product: Product) {
 }
 
 export function getProductStockForSize(product: Product, size: string) {
+  if (product.stockByVariant && Object.keys(product.stockByVariant).length > 0) {
+    return getStockForSizeAcrossColors(product, size);
+  }
+
   const stockBySize = product.stockBySize ?? [];
   const sizeStock = stockBySize.find((item) => item.size === size);
 
@@ -299,6 +423,22 @@ export function getProductStockForSize(product: Product, size: string) {
 
 export function isProductSizeAvailable(product: Product, size: string) {
   return getProductStockForSize(product, size) > 0;
+}
+
+export function getProductStockForColorAndSize(
+  product: Product,
+  color: string | undefined,
+  size: string
+) {
+  return getStockForVariant(product, color, size);
+}
+
+export function isProductColorSizeAvailable(
+  product: Product,
+  color: string | undefined,
+  size: string
+) {
+  return getProductStockForColorAndSize(product, color, size) > 0;
 }
 
 export function matchesCommercialFilter(

@@ -160,11 +160,23 @@ export const paymentMethods = [
 ];
 
 export const policyLinks = [
-  "Cambios y devoluciones",
-  "Apartados",
-  "Envíos y entregas",
-  "Privacidad",
-];
+  {
+    label: "Cambios y devoluciones",
+    href: "/politicas/cambios-y-devoluciones",
+  },
+  {
+    label: "Apartados",
+    href: "/politicas/apartados",
+  },
+  {
+    label: "Envíos y entregas",
+    href: "/politicas/envios-y-entregas",
+  },
+  {
+    label: "Privacidad",
+    href: "/politicas/privacidad",
+  },
+] as const;
 
 export function buildWhatsAppUrl(message: string) {
   return `https://wa.me/${storeConfig.whatsappInternational}?text=${encodeURIComponent(

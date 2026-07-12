@@ -14,6 +14,7 @@ import {
   categoryToSection,
   formatPrice,
   getSectionLabels,
+  getSubcategoryLabels,
   productAppearsInSection,
 } from "@/lib/products";
 import { ArrowDown, ArrowUp, RefreshCw, Save, Star } from "lucide-react";
@@ -21,8 +22,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 type ProductDraft = FirebaseProduct;
+type HomeCategoryFilter = "Todas" | Exclude<MainCategoryName, "Unisex">;
 
-const homeCategoryOptions: MainCategoryName[] = ["Niña", "Niño", "Unisex"];
+const homeCategoryOptions: HomeCategoryFilter[] = ["Todas", "Niña", "Niño"];
 
 const homeSectionOptions: { value: Exclude<HomeSection, null>; label: string }[] =
   [
@@ -43,7 +45,7 @@ function getDateValue(value: ProductDraft["createdAt"]) {
 
 export default function AdminHomePage() {
   const [activeCategory, setActiveCategory] =
-    useState<MainCategoryName>("Niña");
+    useState<HomeCategoryFilter>("Todas");
   const [products, setProducts] = useState<ProductDraft[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -63,6 +65,8 @@ export default function AdminHomePage() {
         category,
         products: products
           .filter((product) => {
+            if (category === "Todas") return true;
+
             const section = categoryToSection(category);
             return section ? productAppearsInSection(product, section) : false;
           })
@@ -340,7 +344,9 @@ export default function AdminHomePage() {
                         </p>
                         <p className="mt-1 truncate text-xs font-bold text-slate-400">
                           {getSectionLabels(product) || product.category} ·{" "}
-                          {product.subcategory} ·{" "}
+                          {getSubcategoryLabels(product) ||
+                            product.subcategory}{" "}
+                          ·{" "}
                           {formatPrice(product.price)}
                         </p>
                       </div>
@@ -380,7 +386,7 @@ export default function AdminHomePage() {
 
             <div className="rounded-2xl bg-[#fffaf5] p-2 ring-1 ring-rose-100">
               <p className="px-2 pb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Filtra productos por sección
+                Filtra productos por categoría
               </p>
               <div className="grid grid-cols-3 gap-2">
                 {homeCategoryOptions.map((category) => (
@@ -415,7 +421,7 @@ export default function AdminHomePage() {
 
               {activeGroup.products.length === 0 ? (
                 <div className="rounded-2xl bg-white px-4 py-4 text-sm font-bold text-slate-500 ring-1 ring-slate-100">
-                  No hay productos activos en esta sección.
+                  No hay productos activos en esta categoría.
                 </div>
               ) : (
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -434,7 +440,9 @@ export default function AdminHomePage() {
                             {product.name}
                           </h3>
                           <p className="mt-1 truncate text-xs font-bold text-slate-400">
-                            {product.subcategory} · {formatPrice(product.price)}
+                            {getSubcategoryLabels(product) ||
+                              product.subcategory}{" "}
+                            · {formatPrice(product.price)}
                           </p>
                         </div>
 

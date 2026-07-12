@@ -22,35 +22,53 @@ const policies: PolicyContent[] = [
     slug: "cambios-y-devoluciones",
     title: "Cambios y devoluciones",
     subtitle:
-      "Queremos que tu compra sea clara desde el inicio. Estas condiciones nos ayudan a revisar cada caso con orden y cuidado.",
+      "Queremos que tu compra sea clara desde el inicio. Por eso te pedimos revisar talla, modelo, color y datos del pedido antes de confirmar tu compra.",
     sections: [
       {
-        title: "Condiciones para cambios",
+        title: "Antes de comprar",
         items: [
-          "Los cambios están sujetos a disponibilidad de talla, modelo y color.",
-          "Para solicitar un cambio, el cliente debe comunicarse por WhatsApp.",
-          "La prenda debe estar sin uso, limpia, sin daños, con etiquetas y en condiciones de venta.",
-          "No se aceptan cambios en prendas usadas, lavadas, dañadas o alteradas.",
-          "Los cambios deben solicitarse dentro de los 3 días naturales posteriores a recibir el pedido.",
+          "El cliente debe revisar cuidadosamente talla, color, modelo, cantidad y dirección antes de confirmar su pedido.",
+          "Las imágenes pueden tener ligeras variaciones de color por iluminación, cámara o pantalla.",
+          "Si tienes dudas sobre una talla o prenda, puedes consultarnos por WhatsApp antes de comprar.",
         ],
       },
       {
-        title: "Productos especiales y ofertas",
+        title: "Cambios por decisión del cliente",
         items: [
-          "En productos en oferta, liquidación o pedidos especiales, los cambios pueden estar limitados.",
-          "No hay devoluciones en efectivo salvo error confirmado de la tienda o caso especial autorizado.",
-          "Los gastos de envío por cambio corren por cuenta del cliente, salvo error de la tienda.",
+          "No se realizan cambios por talla elegida incorrectamente, cambio de opinión, color, modelo o gusto personal.",
+          "No se aceptan devoluciones en efectivo por decisión del cliente.",
+          "En productos de oferta, liquidación, apartados, pedidos especiales o mayoreo, no aplican cambios por decisión del cliente.",
         ],
       },
       {
         title: "Producto incorrecto o con defecto",
         items: [
-          "Si el producto llegó incorrecto o con defecto, el cliente debe enviar evidencia por WhatsApp.",
-          "La tienda revisará el caso y confirmará la solución disponible antes de iniciar cualquier cambio.",
+          "Solo se revisan cambios cuando el producto recibido no corresponde al pedido, llega dañado o presenta defecto de fabricación.",
+          "El cliente debe reportarlo por WhatsApp dentro de las primeras 48 horas posteriores a recibir el pedido.",
+          "Es necesario enviar fotos o video donde se vea claramente el detalle del producto y el empaque recibido.",
+          "La prenda debe estar sin uso, sin lavar, sin alteraciones, con etiquetas y en condiciones de revisión.",
+        ],
+      },
+      {
+        title: "Solución disponible",
+        items: [
+          "Si la tienda confirma que hubo error o defecto de fabricación, se ofrecerá una solución según disponibilidad.",
+          "La solución puede ser cambio por el mismo producto, reposición disponible o acuerdo directo con la tienda.",
+          "Si el producto ya no está disponible, la tienda propondrá una alternativa similar o una solución acordada por WhatsApp.",
+          "Los envíos derivados de un error confirmado de la tienda serán revisados directamente con el cliente.",
+        ],
+      },
+      {
+        title: "Casos que no aplican",
+        items: [
+          "No aplican cambios por prendas usadas, lavadas, dañadas por uso, alteradas o sin etiquetas.",
+          "No aplican cambios por mal uso, lavado incorrecto o desgaste natural de la prenda.",
+          "No aplican cambios si el reporte se realiza fuera del plazo indicado.",
+          "No aplican cambios por dirección incorrecta o datos incompletos proporcionados por el cliente.",
         ],
       },
     ],
-    cta: "Si tienes dudas sobre un cambio, contáctanos por WhatsApp.",
+    cta: "Si recibiste un producto incorrecto, dañado o con posible defecto, contáctanos por WhatsApp para revisar tu caso.",
   },
   {
     slug: "apartados",
@@ -103,7 +121,11 @@ const policies: PolicyContent[] = [
         title: "Costo y tiempos",
         items: [
           "El costo de envío puede variar según destino, tamaño del pedido, paquetería y cantidad de prendas.",
+          "El pago en línea cubre únicamente los productos del pedido.",
+          "El envío se cotiza por WhatsApp después de revisar dirección, cantidad de prendas y tipo de paquete.",
+          "El envío se paga por separado, al recibir o según acuerdo con la tienda.",
           "Pedidos grandes o de mayoreo pueden requerir cotización especial por WhatsApp.",
+          "En pedidos grandes, mayoreo o zonas extendidas, el costo puede variar.",
           "Los tiempos de entrega dependen de la paquetería y la ubicación del cliente.",
           "La tienda no se hace responsable por retrasos causados por paquetería, clima, direcciones incorrectas o datos incompletos.",
         ],

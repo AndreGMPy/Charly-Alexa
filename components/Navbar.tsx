@@ -6,6 +6,7 @@ import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
 import {
   formatPrice,
   getSectionLabels,
+  getSubcategoryLabels,
   isPublicStoreProduct,
   products,
 } from "@/lib/products";
@@ -43,6 +44,7 @@ export default function Navbar() {
           product.category.toLowerCase().includes(normalizedQuery) ||
           getSectionLabels(product).toLowerCase().includes(normalizedQuery) ||
           product.subcategory.toLowerCase().includes(normalizedQuery) ||
+          getSubcategoryLabels(product).toLowerCase().includes(normalizedQuery) ||
           product.colors.join(" ").toLowerCase().includes(normalizedQuery)
         );
       })
@@ -173,7 +175,8 @@ export default function Navbar() {
                       </p>
 
                       <p className="text-xs font-bold text-slate-400">
-                        {product.category} · {product.subcategory}
+                        {getSectionLabels(product) || product.category} ·{" "}
+                        {getSubcategoryLabels(product) || product.subcategory}
                       </p>
                     </div>
 
@@ -261,7 +264,8 @@ export default function Navbar() {
                         </p>
 
                         <p className="mt-1 text-xs font-bold text-slate-400">
-                          {product.category} · {product.subcategory} ·{" "}
+                          {getSectionLabels(product) || product.category} ·{" "}
+                          {getSubcategoryLabels(product) || product.subcategory} ·{" "}
                           {formatPrice(product.price)}
                         </p>
                       </Link>

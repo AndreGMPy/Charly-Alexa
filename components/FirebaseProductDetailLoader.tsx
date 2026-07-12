@@ -11,6 +11,7 @@ import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
 import {
   isPublicStoreProduct,
   normalizeProductSections,
+  productMatchesSubcategory,
   type Product,
 } from "@/lib/products";
 import { ArrowLeft, Search, ShoppingBag } from "lucide-react";
@@ -31,7 +32,7 @@ function getRelatedProducts(product: Product, products: Product[]) {
         (normalizeProductSections(item).some((section) =>
           productSections.includes(section)
         ) ||
-          item.subcategory === product.subcategory)
+          productMatchesSubcategory(item, product.subcategory))
     )
     .slice(0, 3);
 }
