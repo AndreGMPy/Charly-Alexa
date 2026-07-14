@@ -2,6 +2,7 @@
 
 import { isAdminUser } from "@/lib/admin-auth";
 import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import { getOrders } from "@/lib/firebase-services/orders";
 import { logErrorInDevelopment } from "@/lib/safe-errors";
 import {
   ClipboardList,
@@ -44,6 +45,7 @@ export default function AdminShell({ children }: AdminShellProps) {
   const [checking, setChecking] = useState(isFirebaseConfigured);
   const [accessDenied, setAccessDenied] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [newOrdersCount, setNewOrdersCount] = useState(0);
   const deniedRef = useRef(false);
 
   useEffect(() => {
@@ -126,6 +128,36 @@ export default function AdminShell({ children }: AdminShellProps) {
     });
   }, [pathname]);
 
+  useEffect(() => {
+    if (!user || isLoginRoute) return;
+
+    let isCurrent = true;
+
+    async function loadNewOrdersCount() {
+      try {
+        const orders = await getOrders();
+        if (!isCurrent) return;
+
+        setNewOrdersCount(
+          orders.filter(
+            (order) =>
+              !order.adminViewedAt &&
+              !order.isDeleted &&
+              (order.paymentStatus ?? order.payment?.status) === "paid"
+          ).length
+        );
+      } catch {
+        if (isCurrent) setNewOrdersCount(0);
+      }
+    }
+
+    void loadNewOrdersCount();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [isLoginRoute, pathname, user]);
+
   if (isLoginRoute) {
     return <div className="min-h-screen bg-[#fffaf5]">{children}</div>;
   }
@@ -201,7 +233,12 @@ export default function AdminShell({ children }: AdminShellProps) {
             }`}
           >
             <Icon size={18} />
-            {item.label}
+            <span className="min-w-0 flex-1">{item.label}</span>
+            {item.href === "/admin/pedidos" && newOrdersCount > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-500 px-1.5 text-[10px] font-black text-white">
+                {newOrdersCount}
+              </span>
+            )}
           </Link>
         );
       })}

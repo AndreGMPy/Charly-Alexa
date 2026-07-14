@@ -106,6 +106,17 @@ export function getSafeOrderMessage(error: unknown) {
 
 export function getSafePaymentMessage(error: unknown) {
   if (error instanceof Error) {
+    const stripeSafeMessages = [
+      "No pudimos iniciar el pago. Intenta nuevamente.",
+      "El producto ya no esta disponible.",
+      "El carrito esta vacio.",
+      "Los pagos todavia no estan configurados.",
+    ];
+
+    if (stripeSafeMessages.includes(error.message)) {
+      return error.message;
+    }
+
     const safeMessages = [
       "Los pagos todavía no están configurados.",
       "Este pedido ya está pagado.",
@@ -118,7 +129,7 @@ export function getSafePaymentMessage(error: unknown) {
     }
   }
 
-  return "No se pudo preparar el pago. Intenta de nuevo o acuerda por WhatsApp.";
+  return "No pudimos iniciar el pago. Intenta nuevamente.";
 }
 
 export function getSafeSaleMessage(error: unknown) {

@@ -7,6 +7,7 @@ import {
 } from "@/lib/firebase-services/site-settings";
 import { storeConfig } from "@/lib/site";
 import { defaultWholesaleSettings } from "@/lib/wholesale";
+import AdminNotificationSettings from "@/components/admin/AdminNotificationSettings";
 import { ImageUploadField } from "@/components/admin/ImageUploadField";
 import { Save, Store } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -288,6 +289,8 @@ export default function AdminSettingsPage() {
           </label>
         </div>
       </div>
+
+      <AdminNotificationSettings />
 
       <div className="rounded-[1.25rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-6">
         <div className="mb-5">

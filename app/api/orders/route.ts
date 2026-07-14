@@ -131,12 +131,13 @@ function sanitizeWholesaleValidation(value: unknown) {
 }
 
 function parsePaymentProvider(value: unknown): PaymentProvider {
-  if (!isRecord(value)) return "manual";
-  return value.provider === "mercadopago" ? "mercadopago" : "manual";
+  void value;
+  return "manual";
 }
 
 function getInitialPaymentStatus(provider: PaymentProvider): PaymentStatus {
-  return provider === "mercadopago" ? "pending" : "manual";
+  void provider;
+  return "manual";
 }
 
 function parseOrderPayload(body: unknown): ParsedOrder | string {

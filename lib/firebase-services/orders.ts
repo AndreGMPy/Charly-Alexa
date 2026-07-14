@@ -101,12 +101,12 @@ function mapOrderDoc(
           requiresQuote: false,
         }
       : undefined);
-  const payment =
+  const payment: NonNullable<FirebaseOrder["payment"]> =
     data.payment ??
     ({
       status: "manual",
       provider: "manual",
-    } as const);
+    } as NonNullable<FirebaseOrder["payment"]>);
 
   return {
     id: snapshot.id,
@@ -133,11 +133,23 @@ function mapOrderDoc(
     shippingCost,
     total: data.total ?? subtotal + shippingCost,
     payment,
+    paymentStatus: data.paymentStatus ?? payment.status,
+    paymentProvider: data.paymentProvider ?? payment.provider,
+    stripeCheckoutSessionId:
+      data.stripeCheckoutSessionId ?? payment.stripeCheckoutSessionId,
+    stripePaymentIntentId:
+      data.stripePaymentIntentId ?? payment.stripePaymentIntentId,
+    stripeCustomerId: data.stripeCustomerId ?? payment.stripeCustomerId,
+    paidAt: data.paidAt ?? payment.paidAt,
     totalItems:
       data.totalItems ??
       items.reduce((total, item) => total + (item.quantity ?? 0), 0),
     status: data.status ?? "Nuevo",
     source: data.source ?? "web",
+    adminViewedAt: data.adminViewedAt,
+    notifications: data.notifications,
+    inventoryUpdatedAt: data.inventoryUpdatedAt,
+    inventoryUpdateError: data.inventoryUpdateError,
     inventoryReturned: Boolean(data.inventoryReturned),
     inventoryReturnedAt: data.inventoryReturnedAt,
     inventoryReturnedBy: data.inventoryReturnedBy,
@@ -224,6 +236,16 @@ export async function updateOrderStatus(id: string, status: OrderStatus) {
   const orderRef = doc(firestore, ORDERS_COLLECTION, id);
   await updateDoc(orderRef, {
     status,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function markOrderAsViewed(id: string) {
+  const firestore = ensureFirebaseConfigured();
+
+  const orderRef = doc(firestore, ORDERS_COLLECTION, id);
+  await updateDoc(orderRef, {
+    adminViewedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 }

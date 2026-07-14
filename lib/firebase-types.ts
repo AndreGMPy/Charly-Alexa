@@ -22,6 +22,9 @@ export type OrderStatus =
   | "Listo para entregar"
   | "Entregado"
   | "Cancelado"
+  | "pending_payment"
+  | "paid"
+  | "payment_failed"
   | "pending"
   | "confirmed"
   | "preparing"
@@ -56,9 +59,9 @@ export type DeliveryAddress = {
   references?: string;
 };
 
-export type PaymentStatus = "pending" | "paid" | "failed" | "manual";
+export type PaymentStatus = "pending" | "paid" | "failed" | "expired" | "manual";
 
-export type PaymentProvider = "mercadopago" | "manual";
+export type PaymentProvider = "mercadopago" | "stripe" | "manual";
 
 export type OrderPayment = {
   status: PaymentStatus;
@@ -66,6 +69,9 @@ export type OrderPayment = {
   preferenceId?: string;
   initPoint?: string;
   paymentId?: string;
+  stripeCheckoutSessionId?: string;
+  stripePaymentIntentId?: string;
+  stripeCustomerId?: string;
   paidAt?: FirebaseDate;
   amountPaid?: number;
   updatedAt?: FirebaseDate;
@@ -192,9 +198,26 @@ export type FirebaseOrder = {
   shippingCost?: number;
   total: number;
   payment?: OrderPayment;
+  paymentStatus?: PaymentStatus;
+  paymentProvider?: PaymentProvider;
+  stripeCheckoutSessionId?: string;
+  stripePaymentIntentId?: string;
+  stripeCustomerId?: string;
+  paidAt?: FirebaseDate;
   totalItems?: number;
   status: OrderStatus;
   source?: "web" | "store" | string;
+  adminViewedAt?: FirebaseDate;
+  notifications?: {
+    customerEmailSentAt?: FirebaseDate;
+    customerEmailError?: string;
+    adminEmailSentAt?: FirebaseDate;
+    adminEmailError?: string;
+    pushSentAt?: FirebaseDate;
+    pushError?: string;
+  };
+  inventoryUpdatedAt?: FirebaseDate;
+  inventoryUpdateError?: string;
   inventoryReturned?: boolean;
   inventoryReturnedAt?: FirebaseDate;
   inventoryReturnedBy?: string;

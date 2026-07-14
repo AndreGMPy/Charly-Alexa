@@ -333,6 +333,15 @@ export default function CartDrawer() {
     });
   }
 
+  function buildCheckoutItems() {
+    return items.map((item) => ({
+      productId: item.productId,
+      color: item.selectedColor ?? "Sin color",
+      size: item.selectedSize,
+      quantity: item.quantity,
+    }));
+  }
+
   function buildOrderMessage(
     orderNumber: string,
     orderItems: FirebaseOrderItem[],
@@ -456,38 +465,49 @@ ${customerForm.notes || "Sin notas."}`;
     increaseItem(item.id);
   }
 
-  async function startPaymentForOrder(orderId: string) {
+  async function startStripeCheckout() {
     let didRedirect = false;
 
     try {
       setIsStartingPayment(true);
-      const response = await fetch(
-        "/api/payments/mercadopago/create-preference",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ orderId }),
-        }
-      );
+      const cleanDeliveryAddress = getCleanDeliveryAddress();
+      const formattedDeliveryAddress =
+        needsDeliveryAddress
+          ? formatDeliveryAddressText(cleanDeliveryAddress)
+          : "";
+      const response = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          customerName: customerForm.customerName.trim(),
+          customerPhone: customerForm.customerPhone.trim(),
+          customerEmail: customerForm.customerEmail.trim(),
+          deliveryMethod: customerForm.deliveryMethod,
+          deliveryAddress: needsDeliveryAddress ? cleanDeliveryAddress : undefined,
+          address: formattedDeliveryAddress,
+          notes: customerForm.notes.trim(),
+          items: buildCheckoutItems(),
+        }),
+      });
       const responseBody = (await response.json().catch(() => null)) as
-        | { message?: string; initPoint?: string }
+        | { message?: string; checkoutUrl?: string }
         | null;
 
-      if (!response.ok || !responseBody?.initPoint) {
+      if (!response.ok || !responseBody?.checkoutUrl) {
         throw new Error(
           responseBody?.message ??
-            "No se pudo preparar el pago. Intenta de nuevo o acuerda por WhatsApp."
+            "No pudimos iniciar el pago. Intenta nuevamente."
         );
       }
 
       clearCart();
       didRedirect = true;
-      window.location.assign(responseBody.initPoint);
+      window.location.assign(responseBody.checkoutUrl);
       return true;
     } catch (error) {
-      logErrorInDevelopment("Mercado Pago preference error", error);
+      logErrorInDevelopment("Stripe checkout error", error);
       toast.error(getSafePaymentMessage(error));
       return false;
     } finally {
@@ -517,10 +537,7 @@ ${customerForm.notes || "Sin notas."}`;
     const orderSubtotal = subtotal;
     const orderShipping = payableShipping;
     const orderTotal = total;
-    const payment =
-      customerForm.paymentPreference === "pay_now"
-        ? { status: "pending" as const, provider: "mercadopago" as const }
-        : { status: "manual" as const, provider: "manual" as const };
+    const payment = { status: "manual" as const, provider: "manual" as const };
     const shouldPayNow = customerForm.paymentPreference === "pay_now";
     let didStartPayment = false;
 
@@ -528,6 +545,8 @@ ${customerForm.notes || "Sin notas."}`;
       setIsSubmitting(true);
       if (shouldPayNow) {
         setIsStartingPayment(true);
+        didStartPayment = await startStripeCheckout();
+        return;
       }
 
       const cleanDeliveryAddress = getCleanDeliveryAddress();
@@ -580,11 +599,6 @@ ${customerForm.notes || "Sin notas."}`;
       setConfirmation(nextConfirmation);
       setStep(1);
 
-      if (shouldPayNow) {
-        didStartPayment = await startPaymentForOrder(result.id);
-        return;
-      }
-
       clearCart();
       if (customerForm.paymentPreference === "whatsapp") {
         window.open(whatsappUrl, "_blank", "noopener,noreferrer");
@@ -604,7 +618,7 @@ ${customerForm.notes || "Sin notas."}`;
   async function handleStartPayment() {
     if (!confirmation || isStartingPayment) return;
 
-    await startPaymentForOrder(confirmation.orderId);
+    await startStripeCheckout();
   }
 
   const validationMessages = [
@@ -1109,7 +1123,7 @@ ${customerForm.notes || "Sin notas."}`;
                               value: "pay_now",
                               label: "Pagar productos ahora",
                               description:
-                                "Serás redirigido a Mercado Pago. El envío se confirma por WhatsApp.",
+                                "Serás redirigido a Stripe. El envío se confirma por WhatsApp.",
                             },
                             {
                               value: "whatsapp",
@@ -1415,7 +1429,7 @@ ${customerForm.notes || "Sin notas."}`;
                       Preparando tu pago…
                     </h3>
                     <p className="mt-2 text-sm font-bold leading-6 text-slate-500">
-                      Te redirigiremos de forma segura a Mercado Pago.
+                      Te redirigiremos de forma segura a Stripe.
                     </p>
                   </div>
                 </motion.div>

@@ -127,6 +127,8 @@ function isPendingOrder(order: FirebaseOrder) {
 
   return [
     "Nuevo",
+    "pending_payment",
+    "paid",
     "Confirmado",
     "Preparando",
     "pending",

@@ -4,6 +4,7 @@ import {
   cancelOrder,
   deleteCancelledOrder,
   getOrders,
+  markOrderAsViewed,
   restoreOrder,
   updateOrderStatus,
 } from "@/lib/firebase-services/orders";
@@ -20,24 +21,30 @@ import {
   PackageCheck,
   RefreshCw,
   Search,
+  CheckCircle2,
   Trash2,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 const orderStatuses: OrderStatus[] = [
+  "pending_payment",
+  "paid",
   "Nuevo",
   "Confirmado",
   "Preparando",
   "Listo para entregar",
   "Entregado",
+  "payment_failed",
   "Cancelado",
 ];
 
 type OrderFilter =
   | "Todos"
   | "Nuevos"
+  | "Pagados"
   | "Confirmados"
   | "Preparando"
   | "Listos"
@@ -48,6 +55,7 @@ type OrderFilter =
 const orderFilters: OrderFilter[] = [
   "Todos",
   "Nuevos",
+  "Pagados",
   "Confirmados",
   "Preparando",
   "Listos",
@@ -92,8 +100,11 @@ function getOrderFolio(order: FirebaseOrder) {
   return order.orderNumber ?? order.id.slice(-6).toUpperCase();
 }
 
-function getSpanishStatus(status: FirebaseOrder["status"]): OrderStatus {
-  const map: Partial<Record<FirebaseOrder["status"], OrderStatus>> = {
+function getSpanishStatus(status: FirebaseOrder["status"]) {
+  const map: Partial<Record<FirebaseOrder["status"], string>> = {
+    pending_payment: "Pendiente de pago",
+    paid: "Pagado",
+    payment_failed: "Pago fallido",
     pending: "Nuevo",
     confirmed: "Confirmado",
     preparing: "Preparando",
@@ -127,7 +138,7 @@ function getOrderPayableProductsTotal(order: FirebaseOrder) {
 }
 
 function getPaymentStatusLabel(order: FirebaseOrder) {
-  const status = order.payment?.status;
+  const status = order.paymentStatus ?? order.payment?.status;
   const quoteShipping = orderRequiresShippingQuote(order);
 
   if (status === "paid") return quoteShipping ? "Pagado: productos" : "Pagado";
@@ -142,26 +153,29 @@ function getPaymentStatusLabel(order: FirebaseOrder) {
 }
 
 function getPaymentProviderLabel(order: FirebaseOrder) {
-  const provider = order.payment?.provider;
+  const provider = order.paymentProvider ?? order.payment?.provider;
 
   if (provider === "mercadopago") return "Mercado Pago";
+  if (provider === "stripe") return "Stripe";
   if (provider === "manual") return "Manual / WhatsApp";
   return "No registrado";
 }
 
 function getPaymentBadgeLabel(order: FirebaseOrder) {
+  const paymentStatus = order.paymentStatus ?? order.payment?.status;
+
   if (orderRequiresShippingQuote(order)) {
-    if (order.payment?.status === "paid") return "Pago recibido: productos";
-    if (order.payment?.status === "pending") return "Pago de productos pendiente";
+    if (paymentStatus === "paid") return "Pago recibido: productos";
+    if (paymentStatus === "pending") return "Pago de productos pendiente";
     return "Pago de productos";
   }
 
-  if (order.payment?.status === "paid") return "Pago confirmado";
+  if (paymentStatus === "paid") return "Pago confirmado";
   return getPaymentStatusLabel(order);
 }
 
 function getPaymentBadgeClass(order: FirebaseOrder) {
-  const status = order.payment?.status;
+  const status = order.paymentStatus ?? order.payment?.status;
 
   if (status === "paid") {
     return "bg-emerald-50 text-emerald-700 ring-emerald-100";
@@ -184,6 +198,11 @@ function getPaymentAmountPaid(order: FirebaseOrder) {
     : null;
 }
 
+function isNewPaidOrder(order: FirebaseOrder) {
+  const paymentStatus = order.paymentStatus ?? order.payment?.status;
+  return !order.adminViewedAt && paymentStatus === "paid" && !order.isDeleted;
+}
+
 function getDeliveryMethodLabel(order: FirebaseOrder) {
   return order.deliveryMethod ?? order.shipping?.method ?? "Envío nacional";
 }
@@ -192,7 +211,8 @@ function matchesOrderFilter(order: FirebaseOrder, filter: OrderFilter) {
   const status = getSpanishStatus(order.status);
 
   if (filter === "Todos") return true;
-  if (filter === "Nuevos") return status === "Nuevo";
+  if (filter === "Nuevos") return status === "Nuevo" || status === "Pendiente de pago";
+  if (filter === "Pagados") return status === "Pagado";
   if (filter === "Confirmados") return status === "Confirmado";
   if (filter === "Preparando") return status === "Preparando";
   if (filter === "Listos") return status === "Listo para entregar";
@@ -285,6 +305,8 @@ function buildCopyAddressText(order: FirebaseOrder) {
 }
 
 export default function AdminOrdersPage() {
+  const searchParams = useSearchParams();
+  const highlightedOrderId = searchParams.get("pedido") ?? "";
   const [orders, setOrders] = useState<FirebaseOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [busyOrderId, setBusyOrderId] = useState("");
@@ -315,6 +337,14 @@ export default function AdminOrdersPage() {
       void loadOrders();
     });
   }, [loadOrders]);
+
+  useEffect(() => {
+    if (highlightedOrderId) {
+      queueMicrotask(() => {
+        setExpandedOrderId(highlightedOrderId);
+      });
+    }
+  }, [highlightedOrderId]);
 
   const visibleOrders = useMemo(
     () =>
@@ -439,6 +469,23 @@ export default function AdminOrdersPage() {
       toast.success("Pedido restaurado");
     } catch {
       toast.error("No se pudo restaurar el pedido");
+    } finally {
+      setBusyOrderId("");
+    }
+  }
+
+  async function handleMarkViewed(order: FirebaseOrder) {
+    try {
+      setBusyOrderId(order.id);
+      await markOrderAsViewed(order.id);
+      setOrders((currentOrders) =>
+        currentOrders.map((item) =>
+          item.id === order.id ? { ...item, adminViewedAt: new Date() } : item
+        )
+      );
+      toast.success("Pedido marcado como visto");
+    } catch {
+      toast.error("No se pudo marcar como visto");
     } finally {
       setBusyOrderId("");
     }
@@ -588,6 +635,8 @@ export default function AdminOrdersPage() {
           const status = getSpanishStatus(order.status);
           const isExpanded = expandedOrderId === order.id;
           const isCancelled = status === "Cancelado";
+          const isNew = isNewPaidOrder(order);
+          const isHighlighted = highlightedOrderId === order.id;
           const deliveryAddressLines = getOrderDeliveryAddressLines(order);
           const canCopyAddress =
             order.deliveryMethod !== "Recoger en tienda" &&
@@ -665,7 +714,9 @@ export default function AdminOrdersPage() {
           return (
             <article
               key={order.id}
-              className="min-w-0 rounded-[1.1rem] bg-white p-3 shadow-sm ring-1 ring-rose-100 sm:rounded-[1.75rem] sm:p-5"
+              className={`min-w-0 rounded-[1.1rem] bg-white p-3 shadow-sm ring-1 sm:rounded-[1.75rem] sm:p-5 ${
+                isHighlighted || isNew ? "ring-emerald-200" : "ring-rose-100"
+              }`}
             >
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
@@ -676,6 +727,11 @@ export default function AdminOrdersPage() {
                     <span className="rounded-full bg-rose-50 px-3 py-1.5 text-xs font-black text-rose-600 ring-1 ring-rose-100">
                       Web
                     </span>
+                    {isNew && (
+                      <span className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-black text-white">
+                        Nuevo
+                      </span>
+                    )}
                     <span
                       className={`rounded-full px-3 py-1.5 text-xs font-black ring-1 ${
                         isCancelled
@@ -700,7 +756,7 @@ export default function AdminOrdersPage() {
 
                 <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
                   <select
-                    value={status}
+                    value={order.status}
                     onChange={(event) =>
                       void handleStatusChange(
                         order,
@@ -712,7 +768,7 @@ export default function AdminOrdersPage() {
                   >
                     {orderStatuses.map((option) => (
                       <option key={option} value={option}>
-                        {option}
+                        {getSpanishStatus(option)}
                       </option>
                     ))}
                   </select>
@@ -849,7 +905,7 @@ export default function AdminOrdersPage() {
                     {order.payment?.paymentId && (
                       <div className="rounded-2xl bg-white p-3">
                         <p className="text-xs font-black uppercase text-slate-400">
-                          ID Mercado Pago
+                          ID de pago
                         </p>
                         <p className="mt-1 break-all text-sm font-black text-slate-950">
                           {order.payment.paymentId}
@@ -1069,6 +1125,18 @@ export default function AdminOrdersPage() {
                   <Eye size={15} />
                   {isExpanded ? "Ocultar detalle" : "Ver detalle"}
                 </button>
+
+                {isNew && (
+                  <button
+                    type="button"
+                    onClick={() => void handleMarkViewed(order)}
+                    disabled={busyOrderId === order.id}
+                    className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:text-emerald-300"
+                  >
+                    <CheckCircle2 size={15} />
+                    Marcar como visto
+                  </button>
+                )}
 
                 {!isCancelled && (
                   <button

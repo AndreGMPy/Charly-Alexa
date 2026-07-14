@@ -171,7 +171,7 @@ const policies: PolicyContent[] = [
       {
         title: "Pagos y derechos del cliente",
         items: [
-          "Los pagos en línea se procesan mediante plataformas externas seguras, como Mercado Pago.",
+          "Los pagos en línea se procesan mediante plataformas externas seguras, como Stripe.",
           "La tienda no almacena datos completos de tarjetas bancarias.",
           "El cliente puede solicitar corrección o eliminación de sus datos contactando por WhatsApp.",
           "Al usar el sitio y realizar un pedido, el cliente acepta el uso de sus datos para completar la compra.",
