@@ -28,3 +28,19 @@ export async function flushSyncQueue(repository: PosRepository, remote: Firebase
 export function shouldAcceptRemoteStock(localUpdatedAt: string, remoteUpdatedAt: string) {
   return Date.parse(remoteUpdatedAt) > Date.parse(localUpdatedAt);
 }
+
+export async function pullProductsFromFirebase() {
+  throw new Error("Fase 2: falta conectar descarga real de productos desde Firebase.");
+}
+
+export async function pushPendingSalesToFirebase() {
+  throw new Error("Fase 2: falta conectar subida real de ventas locales a Firebase.");
+}
+
+export async function pushStockMovementsToFirebase() {
+  throw new Error("Fase 2: falta conectar subida real de movimientos de inventario a Firebase.");
+}
+
+export async function pushCashCutsToFirebase() {
+  throw new Error("Fase 2: falta conectar subida real de cortes de caja a Firebase.");
+}

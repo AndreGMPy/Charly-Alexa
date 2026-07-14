@@ -33,20 +33,20 @@ const policies: PolicyContent[] = [
         ],
       },
       {
-        title: "Cambios por decisión del cliente",
+        title: "Cuándo aplican los cambios",
         items: [
+          "Los cambios solo aplican por defecto de fábrica o producto incorrecto enviado por la tienda, previa revisión por WhatsApp.",
           "No se realizan cambios por talla elegida incorrectamente, cambio de opinión, color, modelo o gusto personal.",
-          "No se aceptan devoluciones en efectivo por decisión del cliente.",
-          "En productos de oferta, liquidación, apartados, pedidos especiales o mayoreo, no aplican cambios por decisión del cliente.",
+          "No se ofrecen devoluciones en efectivo, salvo error confirmado por la tienda y expresamente autorizado.",
         ],
       },
       {
         title: "Producto incorrecto o con defecto",
         items: [
-          "Solo se revisan cambios cuando el producto recibido no corresponde al pedido, llega dañado o presenta defecto de fabricación.",
+          "Los cambios solo aplican por defecto de fábrica o producto incorrecto, previa revisión por WhatsApp.",
           "El cliente debe reportarlo por WhatsApp dentro de las primeras 48 horas posteriores a recibir el pedido.",
           "Es necesario enviar fotos o video donde se vea claramente el detalle del producto y el empaque recibido.",
-          "La prenda debe estar sin uso, sin lavar, sin alteraciones, con etiquetas y en condiciones de revisión.",
+          "La prenda debe estar sin uso, limpia, sin lavar, con etiquetas y en condiciones originales.",
         ],
       },
       {
@@ -62,6 +62,7 @@ const policies: PolicyContent[] = [
         title: "Casos que no aplican",
         items: [
           "No aplican cambios por prendas usadas, lavadas, dañadas por uso, alteradas o sin etiquetas.",
+          "Los productos en oferta, apartados o mayoreo no aplican para cambio, salvo defecto de fábrica confirmado por la tienda.",
           "No aplican cambios por mal uso, lavado incorrecto o desgaste natural de la prenda.",
           "No aplican cambios si el reporte se realiza fuera del plazo indicado.",
           "No aplican cambios por dirección incorrecta o datos incompletos proporcionados por el cliente.",
@@ -90,6 +91,7 @@ const policies: PolicyContent[] = [
         items: [
           "El tiempo máximo de apartado es de 3 días naturales.",
           "Si el cliente no liquida o confirma dentro del plazo, la prenda puede volver a estar disponible para venta.",
+          "La tienda puede liberar la prenda sin previo resguardo adicional cuando vence el plazo acordado.",
           "En prendas de alta demanda, temporada, ofertas o mayoreo, los apartados pueden no estar disponibles.",
         ],
       },
@@ -114,6 +116,7 @@ const policies: PolicyContent[] = [
         items: [
           "La tienda realiza envíos a la dirección proporcionada por el cliente.",
           "El cliente debe revisar que sus datos estén completos: calle, número, colonia, ciudad, estado, código postal y referencias.",
+          "La tienda no se hace responsable por datos incorrectos o incompletos proporcionados por el cliente.",
           "Si el paquete regresa por datos incorrectos o ausencia del cliente, el reenvío corre por cuenta del cliente.",
         ],
       },
@@ -121,9 +124,9 @@ const policies: PolicyContent[] = [
         title: "Costo y tiempos",
         items: [
           "El costo de envío puede variar según destino, tamaño del pedido, paquetería y cantidad de prendas.",
-          "El pago en línea cubre únicamente los productos del pedido.",
+          "El total mostrado y el pago en línea cubren únicamente los productos; no incluyen envío.",
           "El envío se cotiza por WhatsApp después de revisar dirección, cantidad de prendas y tipo de paquete.",
-          "El envío se paga por separado, al recibir o según acuerdo con la tienda.",
+          "El envío se paga al recibir o según acuerdo con la tienda.",
           "Pedidos grandes o de mayoreo pueden requerir cotización especial por WhatsApp.",
           "En pedidos grandes, mayoreo o zonas extendidas, el costo puede variar.",
           "Los tiempos de entrega dependen de la paquetería y la ubicación del cliente.",

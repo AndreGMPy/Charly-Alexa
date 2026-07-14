@@ -1,12 +1,16 @@
 {
   "name": "charly-alexa-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
-    "tauri": "tauri"
+    "check": "tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "tauri dev": "tauri dev",
+    "tauri build": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

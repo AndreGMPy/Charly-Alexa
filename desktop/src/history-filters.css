@@ -1,0 +1,12 @@
+.history-filters {
+  display: grid;
+  grid-template-columns: 1fr 180px auto;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+@media (max-width: 1250px) {
+  .history-filters {
+    grid-template-columns: 1fr 180px;
+  }
+}

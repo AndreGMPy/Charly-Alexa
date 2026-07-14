@@ -110,7 +110,7 @@ export function getSafePaymentMessage(error: unknown) {
       "Los pagos todavía no están configurados.",
       "Este pedido ya está pagado.",
       "Este pedido se acordará por WhatsApp.",
-      "No se pudo iniciar el pago. Intenta de nuevo.",
+      "No se pudo preparar el pago. Intenta de nuevo o acuerda por WhatsApp.",
     ];
 
     if (safeMessages.includes(error.message)) {
@@ -118,7 +118,7 @@ export function getSafePaymentMessage(error: unknown) {
     }
   }
 
-  return "No se pudo iniciar el pago. Intenta de nuevo.";
+  return "No se pudo preparar el pago. Intenta de nuevo o acuerda por WhatsApp.";
 }
 
 export function getSafeSaleMessage(error: unknown) {

@@ -6,6 +6,7 @@ import {
   normalizeDeliveryAddress,
 } from "@/lib/delivery-address";
 import { logErrorInDevelopment } from "@/lib/safe-errors";
+import { sendOrderReceiptEmail } from "@/lib/order-receipt-email";
 import {
   calculateOrderShipping,
   isDeliveryAddressRequired,
@@ -52,6 +53,7 @@ type ParsedOrderItem = {
 type ParsedOrder = {
   customerName: string;
   customerPhone: string;
+  customerEmail: string;
   deliveryMethod: DeliveryMethod;
   address: string;
   deliveryAddress?: DeliveryAddress;
@@ -144,6 +146,7 @@ function parseOrderPayload(body: unknown): ParsedOrder | string {
 
   const customerName = readString(body.customerName, 120);
   const customerPhone = readString(body.customerPhone, 20);
+  const customerEmail = readString(body.customerEmail, 160);
   const deliveryMethod = isDeliveryMethod(body.deliveryMethod)
     ? body.deliveryMethod
     : NATIONAL_DELIVERY_METHOD;
@@ -211,6 +214,7 @@ function parseOrderPayload(body: unknown): ParsedOrder | string {
   return {
     customerName,
     customerPhone,
+    customerEmail,
     deliveryMethod,
     address: isDeliveryAddressRequired(deliveryMethod) ? formattedAddress : "",
     deliveryAddress:
@@ -429,6 +433,34 @@ async function createWebOrderInFirestore(order: ParsedOrder) {
   await firestore.runTransaction(async (transaction) => {
     await writeOrderTransaction(transaction, firestore, orderRef.id, orderNumber, order);
   });
+
+  if (order.customerEmail) {
+    try {
+      const snapshot = await orderRef.get();
+      const saved = snapshot.data() ?? {};
+      await sendOrderReceiptEmail({
+        id: orderRef.id,
+        orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        customerEmail: order.customerEmail,
+        customer: {
+          name: order.customerName,
+          phone: order.customerPhone,
+          email: order.customerEmail,
+        },
+        items: (saved.items ?? []) as FirebaseOrderItem[],
+        subtotal: Number(saved.subtotal) || 0,
+        total: Number(saved.total) || 0,
+        status: "Nuevo",
+        source: "web",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    } catch (emailError) {
+      logErrorInDevelopment("Order receipt email error", emailError);
+    }
+  }
 
   return {
     id: orderRef.id,
@@ -653,6 +685,7 @@ async function writeOrderTransaction(
     orderNumber,
     customerName: order.customerName,
     customerPhone: order.customerPhone,
+    ...(order.customerEmail ? { customerEmail: order.customerEmail } : {}),
     deliveryMethod: order.deliveryMethod,
     address: order.address,
     customerAddress: order.address,
@@ -672,6 +705,7 @@ async function writeOrderTransaction(
     customer: {
       name: order.customerName,
       phone: order.customerPhone,
+      ...(order.customerEmail ? { email: order.customerEmail } : {}),
       address: order.address,
       ...(order.deliveryAddress
         ? { deliveryAddress: order.deliveryAddress }

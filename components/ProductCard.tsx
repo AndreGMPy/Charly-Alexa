@@ -3,8 +3,7 @@ import {
   formatPrice,
   getAvailabilityLabel,
   getProductBadges,
-  getSectionLabels,
-  getSubcategoryLabels,
+  getProductDisplayLabel,
   type Product,
 } from "@/lib/products";
 import { getWholesaleLabel } from "@/lib/wholesale";
@@ -97,7 +96,7 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
 
             {hasWholesale && (
               <span className="rounded-xl bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase text-amber-700 ring-1 ring-amber-100">
-                Mayoreo
+                Mayoreo disponible
               </span>
             )}
           </div>
@@ -116,8 +115,7 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
         </div>
 
         <p className="text-[11px] font-black uppercase text-slate-400 sm:text-xs">
-          {getSectionLabels(product) || product.category} ·{" "}
-          {getSubcategoryLabels(product) || product.subcategory}
+          {getProductDisplayLabel(product) || product.category}
         </p>
 
         <Link href={productHref}>
@@ -129,12 +127,6 @@ export default function ProductCard({ product, compact = false }: ProductCardPro
         {!compact && (
           <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500 sm:text-sm">
             {product.description}
-          </p>
-        )}
-
-        {hasWholesale && (
-          <p className="mt-2 line-clamp-1 text-xs font-black text-amber-700">
-            {wholesaleLabel}
           </p>
         )}
 

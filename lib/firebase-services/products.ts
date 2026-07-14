@@ -57,9 +57,16 @@ function ensureFirebaseConfigured() {
 
 function getSections(
   sections: unknown,
-  category: FirebaseProduct["category"] | undefined
+  category: FirebaseProduct["category"] | undefined,
+  subcategories?: unknown,
+  subcategory?: string | null
 ) {
-  return normalizeProductSections({ sections, category });
+  return normalizeProductSections({
+    sections,
+    category,
+    subcategories,
+    subcategory,
+  });
 }
 
 function getSubcategories(value: unknown) {
@@ -80,7 +87,12 @@ function mapProductDoc(
 ): FirebaseProduct {
   const data = snapshot.data() as Partial<FirebaseProduct>;
 
-  const sections = getSections(data.sections, data.category);
+  const sections = getSections(
+    data.sections,
+    data.category,
+    data.subcategories,
+    data.subcategory
+  );
   const sizes = cleanList(data.sizes, []);
   const colors = cleanList(data.colors, []);
   const stockBySize = normalizeStockBySize(data.stockBySize);

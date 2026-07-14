@@ -156,17 +156,11 @@ const quickSizeOptions = [
   "12",
   "14",
   "16",
+  "XCH",
   "CH",
   "M",
   "G",
   "XG",
-  "RN",
-  "0-3M",
-  "3-6M",
-  "6-12M",
-  "12-18M",
-  "18-24M",
-  "Unitalla",
 ];
 
 function getSubcategorySourceCategories(
@@ -731,6 +725,16 @@ export default function ProductForm({
     () => stockByVariantToStockBySize(normalizedStockByVariant, sizes),
     [normalizedStockByVariant, sizes]
   );
+  const hasCompleteWholesaleRunStock = useMemo(
+    () =>
+      normalizedWholesaleRunSizes.length > 0 &&
+      colors.some((color) =>
+        normalizedWholesaleRunSizes.every(
+          (size) => (normalizedStockByVariant[color]?.[size] ?? 0) >= 1
+        )
+      ),
+    [colors, normalizedStockByVariant, normalizedWholesaleRunSizes]
+  );
   const stockSummaryLabel =
     sizes.length === 0 || colors.length === 0
       ? "Se calcularán al capturar stock"
@@ -790,9 +794,9 @@ export default function ProductForm({
       warnings.add("Agrega al menos un color.");
     }
 
-    if (sizes.length > 0 && colors.length > 0 && totalStock <= 0) {
+    if (form.isActive && sizes.length > 0 && colors.length > 0 && totalStock <= 0) {
       warnings.add(
-        "Captura el stock por color y talla para calcular las piezas disponibles."
+        "Captura stock por color y talla antes de publicar el producto."
       );
     }
 
@@ -808,6 +812,16 @@ export default function ProductForm({
       if (normalizedWholesaleRunSizes.length === 0) {
         warnings.add("Elige las tallas que forman la corrida.");
       }
+
+      if (
+        form.isActive &&
+        normalizedWholesaleRunSizes.length > 0 &&
+        !hasCompleteWholesaleRunStock
+      ) {
+        warnings.add(
+          "Captura al menos 1 pieza de cada talla de la corrida en un mismo color."
+        );
+      }
     }
 
     return Array.from(warnings);
@@ -816,9 +830,11 @@ export default function ProductForm({
     colors.length,
     finalCustomerPrice,
     form.homeSection,
+    form.isActive,
     form.name,
     form.showOnHome,
     form.wholesaleRunEnabled,
+    hasCompleteWholesaleRunStock,
     normalizedWholesaleRunSizes.length,
     paymentFeePercentValue,
     productPhotoUrls,
@@ -1503,7 +1519,7 @@ export default function ProductForm({
                     Plantillas rápidas
                   </span>
                   <span className="mt-1 hidden text-xs font-semibold leading-5 text-slate-600 sm:block">
-                    Llena categoría, subcategorías y tallas disponibles.
+                    Llena categoría, subcategorías y tallas sugeridas.
                   </span>
                 </span>
                 <ChevronDown
@@ -1626,7 +1642,7 @@ export default function ProductForm({
                 </div>
 
                 <HelpText>
-                  Elige hasta 3 subcategorías que describan la prenda.
+                  Elige hasta 3 subcategorías que describan la prenda. Si seleccionas Unisex, la prenda aparecerá automáticamente en Niña y Niño.
                 </HelpText>
               </div>
 
@@ -1755,7 +1771,7 @@ export default function ProductForm({
               </div>
 
               <label className="space-y-2 lg:col-span-2">
-                <span className={labelClass}>Tallas disponibles</span>
+                <span className={labelClass}>Tallas del producto</span>
                 <div className="flex min-w-0 flex-wrap gap-1.5 sm:gap-2">
                   {quickSizeOptions.map((size) => {
                     const isSelected = sizes.includes(size);
@@ -1776,12 +1792,18 @@ export default function ProductForm({
                     );
                   })}
                 </div>
-                <input
-                  value={form.sizes}
-                  onChange={(event) => updateSizes(event.target.value)}
-                  className={fieldClass}
-                  placeholder="Ej. 1, 2, 4, 6, 8"
-                />
+                {isEditing && (
+                  <input
+                    value={form.sizes}
+                    onChange={(event) => updateSizes(event.target.value)}
+                    className={fieldClass}
+                    placeholder="Tallas guardadas en este producto"
+                    aria-label="Tallas guardadas del producto"
+                  />
+                )}
+                <p className="text-[11px] font-black text-slate-500 sm:text-xs">
+                  Selecciona solo las tallas reales que maneja esta prenda.
+                </p>
                 <p className="text-[11px] font-black text-slate-500 sm:text-xs">
                   Tallas: {sizes.length > 0 ? sizes.join(", ") : "sin tallas"} · Piezas totales: {stockSummaryLabel}
                 </p>
@@ -2203,7 +2225,7 @@ export default function ProductForm({
               </div>
             </CollapsibleBlock>
 
-            {productToEdit && String(form.wholesaleMode) === "__legacy_hidden__" ? <div className="mt-3">
+            {false ? <div className="mt-3">
               <CollapsibleBlock
                 title="__REMOVE__"
                 description="Solo para productos heredados que ya usaban otra regla."

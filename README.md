@@ -20,6 +20,16 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## WhatsApp y correo de pedidos
+
+El envío automático por WhatsApp requiere WhatsApp Business Cloud API oficial.
+Por ahora la tienda y el admin generan enlaces `wa.me` con el mensaje
+prellenado; la persona confirma el envío desde WhatsApp.
+
+El módulo `lib/order-receipt-email.ts` deja preparado el recibo por correo sin
+bloquear la creación del pedido. Para envío real falta configurar Resend,
+Brevo, SendGrid o Nodemailer.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

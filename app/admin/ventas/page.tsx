@@ -24,6 +24,7 @@ import type {
   ProductCategoryValue,
 } from "@/lib/firebase-types";
 import { formatPrice } from "@/lib/products";
+import { buildStoreReceiptText } from "@/lib/receipts";
 import { getSafeSaleMessage, logErrorInDevelopment } from "@/lib/safe-errors";
 import { getStockForVariant } from "@/lib/variant-utils";
 import {
@@ -434,6 +435,7 @@ export default function AdminSalesPage() {
   const [adjustReason, setAdjustReason] =
     useState<InventoryAdjustmentReason>("conteo físico");
   const [lastTicket, setLastTicket] = useState<TicketData | null>(null);
+  const [isTicketVisible, setIsTicketVisible] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isClosingCash, setIsClosingCash] = useState(false);
@@ -790,27 +792,7 @@ export default function AdminSalesPage() {
   }
 
   function buildTicketText(ticket: TicketData) {
-    const productsText = ticket.items
-      .map(
-        (item) =>
-          `${item.productName ?? item.name} | ${item.color ?? "Sin color"} | Talla ${item.size} | ${item.quantity} pza | ${formatPrice(item.subtotal)}`
-      )
-      .join("\n");
-    const mixedText =
-      ticket.paymentMethod === "Mixto" && ticket.paymentBreakdown
-        ? `\nEfectivo: ${formatPrice(ticket.paymentBreakdown.cash)}\nTransferencia: ${formatPrice(ticket.paymentBreakdown.transfer)}\nTarjeta: ${formatPrice(ticket.paymentBreakdown.card)}`
-        : "";
-
-    return `Charly Alexa
-Folio: ${ticket.folio}
-Fecha: ${ticket.createdAt.toLocaleString("es-MX")}
-
-${productsText}
-
-Subtotal: ${formatPrice(ticket.subtotal)}
-Descuento: ${formatPrice(ticket.discountTotal)}
-Total: ${formatPrice(ticket.total)}
-Pago: ${ticket.paymentMethod}${mixedText}`;
+    return buildStoreReceiptText(ticket);
   }
 
   async function handleSaveSale() {
@@ -876,6 +858,7 @@ Pago: ${ticket.paymentMethod}${mixedText}`;
       };
 
       setLastTicket(ticket);
+      setIsTicketVisible(true);
       toast.success("Venta registrada e inventario actualizado.");
       resetCurrentSale();
       await loadSalesData();
@@ -1474,6 +1457,14 @@ Pago: ${ticket.paymentMethod}${mixedText}`;
             <div className="grid gap-2 sm:flex">
               <button
                 type="button"
+                onClick={() => setIsTicketVisible((visible) => !visible)}
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-lime-50 px-4 py-2 text-xs font-black text-lime-700 ring-1 ring-lime-100"
+              >
+                <Eye size={15} />
+                {isTicketVisible ? "Ocultar ticket" : "Ver ticket"}
+              </button>
+              <button
+                type="button"
                 onClick={() => window.print()}
                 className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-black text-white"
               >
@@ -1486,7 +1477,7 @@ Pago: ${ticket.paymentMethod}${mixedText}`;
                 className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-black text-slate-700 ring-1 ring-slate-100"
               >
                 <Copy size={15} />
-                Copiar resumen
+                Copiar ticket
               </button>
               <button
                 type="button"
@@ -1498,9 +1489,11 @@ Pago: ${ticket.paymentMethod}${mixedText}`;
               </button>
             </div>
           </div>
-          <pre className="mt-4 whitespace-pre-wrap rounded-2xl bg-[#fffaf5] p-4 text-xs font-bold leading-5 text-slate-700 ring-1 ring-rose-100">
-            {buildTicketText(lastTicket)}
-          </pre>
+          {isTicketVisible && (
+            <pre className="mt-4 whitespace-pre-wrap rounded-2xl bg-[#fffaf5] p-4 text-xs font-bold leading-5 text-slate-700 ring-1 ring-rose-100">
+              {buildTicketText(lastTicket)}
+            </pre>
+          )}
         </section>
       )}
 

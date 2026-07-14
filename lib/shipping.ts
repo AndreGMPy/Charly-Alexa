@@ -11,8 +11,6 @@ export const checkoutDeliveryMethods: CheckoutDeliveryMethod[] = [
 ];
 
 export const NATIONAL_DELIVERY_METHOD: CheckoutDeliveryMethod = "Envío nacional";
-export const NATIONAL_SHIPPING_COST = 149;
-
 export const checkoutDeliveryOptions: {
   method: CheckoutDeliveryMethod;
   publicCheckoutEnabled: boolean;
@@ -25,12 +23,6 @@ export const checkoutDeliveryOptions: {
 export const publicCheckoutDeliveryMethods = checkoutDeliveryOptions
   .filter((option) => option.publicCheckoutEnabled)
   .map((option) => option.method);
-
-const shippingCostsByMethod: Record<CheckoutDeliveryMethod, number> = {
-  "Recoger en tienda": 0,
-  "Entrega local": 50,
-  "Envío nacional": NATIONAL_SHIPPING_COST,
-};
 
 export function isCheckoutDeliveryMethod(
   value: unknown
@@ -54,8 +46,6 @@ export function isDeliveryAddressRequired(
 
 export function calculateOrderShipping({
   method,
-  totalItems,
-  hasWholesale,
 }: {
   method: DeliveryMethod;
   totalItems: number;
@@ -70,24 +60,10 @@ export function calculateOrderShipping({
     };
   }
 
-  const requiresQuote = hasWholesale || totalItems > 20;
-
-  if (requiresQuote) {
-    return {
-      method,
-      cost: 0,
-      status: "quote_required",
-      requiresQuote: true,
-    };
-  }
-
   return {
     method,
-    cost:
-      method === "Entrega local"
-        ? shippingCostsByMethod["Entrega local"]
-        : shippingCostsByMethod["Envío nacional"],
-    status: "calculated",
-    requiresQuote: false,
+    cost: 0,
+    status: "quote_required",
+    requiresQuote: true,
   };
 }

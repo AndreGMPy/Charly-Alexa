@@ -55,6 +55,7 @@ type PaymentPreference = "pay_now" | "whatsapp";
 type CustomerForm = {
   customerName: string;
   customerPhone: string;
+  customerEmail: string;
   deliveryMethod: CheckoutDeliveryMethod;
   deliveryAddress: DeliveryAddress;
   paymentPreference: PaymentPreference;
@@ -72,6 +73,7 @@ function createInitialCustomerForm(): CustomerForm {
   return {
     customerName: "",
     customerPhone: "",
+    customerEmail: "",
     deliveryMethod: NATIONAL_DELIVERY_METHOD,
     deliveryAddress: { ...emptyDeliveryAddress },
     paymentPreference: "pay_now",
@@ -86,10 +88,10 @@ const checkoutSteps: { step: CheckoutStep; label: string }[] = [
 ];
 
 const shippingQuoteConfirmationText =
-  "Confirmo que entiendo que el pago en línea cubre únicamente los productos. El costo de envío se cotizará por WhatsApp y se pagará por separado según el acuerdo con la tienda.";
+  "Confirmo que entiendo que el pago en línea cubre únicamente los productos. El envío se cotiza por WhatsApp y se paga por separado.";
 
 const shippingQuoteRequiredText =
-  "Debes confirmar que entiendes cómo se cotiza el envío antes de continuar.";
+  "Marca la confirmación de envío para continuar.";
 
 function getCartImage(item: CartItem) {
   return (
@@ -178,25 +180,14 @@ export default function CartDrawer() {
   const needsDeliveryAddress = isDeliveryAddressRequired(
     customerForm.deliveryMethod
   );
-  const shippingDisplay = shipping.requiresQuote
-    ? "Se cotiza por WhatsApp"
-    : formatPrice(shippingCost);
-  const paymentStatusText =
-    customerForm.paymentPreference === "pay_now"
-      ? shipping.requiresQuote
-        ? "Pendiente: productos"
-        : "Pendiente"
-      : shipping.requiresQuote
-        ? "Pago de productos por acordar"
-        : "Manual / acordar por WhatsApp";
   const paymentPreferenceText =
     customerForm.paymentPreference === "pay_now"
-      ? "Pagar ahora"
+      ? "Pagar productos ahora"
       : "Acordar por WhatsApp";
   const quotedShippingPaymentLabel =
     customerForm.paymentPreference === "pay_now"
       ? "Pago ahora"
-      : "Pago de productos";
+      : "Total del pedido";
   const stockMessages = useMemo(
     () =>
       items
@@ -366,7 +357,7 @@ export default function CartDrawer() {
       ? `Método de entrega: ${customerForm.deliveryMethod}\n\nDirección:\n${deliveryAddressText}`
       : `Entrega: ${customerForm.deliveryMethod}`;
     const quoteText = orderShipping.requiresQuote
-      ? "\n\nEl envío queda pendiente de cotización y pago por separado."
+    ? "\n\nEl envío se cotiza por WhatsApp y se paga al recibir o según acuerdo con la tienda."
       : "";
     const totalsText = orderShipping.requiresQuote
       ? `Total de productos: ${formatPrice(orderSubtotal)}
@@ -486,7 +477,8 @@ ${customerForm.notes || "Sin notas."}`;
 
       if (!response.ok || !responseBody?.initPoint) {
         throw new Error(
-          responseBody?.message ?? "No se pudo iniciar el pago. Intenta de nuevo."
+          responseBody?.message ??
+            "No se pudo preparar el pago. Intenta de nuevo o acuerda por WhatsApp."
         );
       }
 
@@ -546,6 +538,7 @@ ${customerForm.notes || "Sin notas."}`;
       const result = await createWebOrder({
         customerName: customerForm.customerName.trim(),
         customerPhone: customerForm.customerPhone.trim(),
+        customerEmail: customerForm.customerEmail.trim(),
         deliveryMethod: customerForm.deliveryMethod,
         deliveryAddress: needsDeliveryAddress ? cleanDeliveryAddress : undefined,
         shipping: orderShipping,
@@ -644,12 +637,12 @@ ${customerForm.notes || "Sin notas."}`;
             exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 220, damping: 28 }}
           >
-            <div className="flex items-center justify-between border-b border-rose-100 bg-white/80 p-5">
+            <div className="flex items-center justify-between border-b border-rose-100 bg-white/80 p-3 sm:p-5">
               <div>
                 <p className="text-xs font-black uppercase text-rose-500">
                   Pedido
                 </p>
-                <h2 className="text-2xl font-black text-slate-950">
+                <h2 className="text-xl font-black text-slate-950 sm:text-2xl">
                   Carrito
                 </h2>
               </div>
@@ -657,14 +650,14 @@ ${customerForm.notes || "Sin notas."}`;
               <button
                 type="button"
                 onClick={handleCloseCart}
-                className="rounded-full bg-slate-100 p-3 text-slate-700 transition hover:bg-slate-200"
+                  className="rounded-full bg-slate-100 p-2 text-slate-700 transition hover:bg-slate-200 sm:p-3"
                 aria-label="Cerrar carrito"
               >
                 <X />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-5">
               {confirmation ? (
                 <div className="flex min-h-full flex-col items-center justify-center text-center">
                   <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-[2rem] bg-emerald-50 text-emerald-600 ring-1 ring-emerald-100">
@@ -690,7 +683,7 @@ ${customerForm.notes || "Sin notas."}`;
                     >
                       <CreditCard size={17} />
                       {isStartingPayment
-                        ? "Preparando pago..."
+                        ? "Preparando tu pago…"
                         : "Continuar al pago"}
                     </button>
                   ) : (
@@ -926,6 +919,21 @@ ${customerForm.notes || "Sin notas."}`;
                         />
                       </label>
 
+                      <label className="block">
+                        <span className="text-xs font-black uppercase text-slate-400">
+                          Correo (opcional)
+                        </span>
+                        <input
+                          type="email"
+                          value={customerForm.customerEmail}
+                          onChange={(event) =>
+                            updateCustomerForm("customerEmail", event.target.value)
+                          }
+                          className="mt-2 w-full rounded-2xl border border-slate-200 bg-[#fffaf5] px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300 focus:bg-white"
+                          placeholder="cliente@correo.com"
+                        />
+                      </label>
+
                       {needsDeliveryAddress && (
                         <div className="rounded-2xl bg-[#fffaf5] p-3 ring-1 ring-slate-100">
                           <div className="mb-3">
@@ -1034,7 +1042,7 @@ ${customerForm.notes || "Sin notas."}`;
                                   }
                                   autoComplete="address-level1"
                                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
-                                  placeholder="Ej. Guanajuato, Jalisco, Ciudad de México"
+                                placeholder="Guanajuato, Jalisco o Ciudad de México"
                                 />
                               </label>
                             </div>
@@ -1080,12 +1088,6 @@ ${customerForm.notes || "Sin notas."}`;
                         </div>
                       )}
 
-                      {shipping.requiresQuote && (
-                        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-800 ring-1 ring-amber-100">
-                          El envío se cotiza por WhatsApp y se paga por separado según el acuerdo con la tienda.
-                        </p>
-                      )}
-
                       <div className="rounded-2xl bg-[#fffaf5] p-3 ring-1 ring-slate-100">
                         <div className="flex items-center gap-3">
                           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-rose-500 ring-1 ring-rose-100">
@@ -1103,10 +1105,17 @@ ${customerForm.notes || "Sin notas."}`;
 
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {([
-                            { value: "pay_now", label: "Pagar ahora" },
+                            {
+                              value: "pay_now",
+                              label: "Pagar productos ahora",
+                              description:
+                                "Serás redirigido a Mercado Pago. El envío se confirma por WhatsApp.",
+                            },
                             {
                               value: "whatsapp",
                               label: "Acordar por WhatsApp",
+                              description:
+                                "La tienda confirmará disponibilidad, envío y forma de pago por WhatsApp.",
                             },
                           ] as const).map((option) => (
                             <button
@@ -1124,18 +1133,19 @@ ${customerForm.notes || "Sin notas."}`;
                                   : "bg-white text-slate-700 ring-1 ring-slate-100 hover:bg-rose-50"
                               }`}
                             >
-                              {option.label}
+                              <span className="block">{option.label}</span>
+                              <span
+                                className={`mt-1 block text-xs font-semibold leading-5 ${
+                                  customerForm.paymentPreference === option.value
+                                    ? "text-white/75"
+                                    : "text-slate-500"
+                                }`}
+                              >
+                                {option.description}
+                              </span>
                             </button>
                           ))}
                         </div>
-
-                        {customerForm.paymentPreference === "pay_now" && (
-                          <p className="mt-3 rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-slate-500 ring-1 ring-slate-100">
-                            {shipping.requiresQuote
-                              ? "El pago en línea cubre únicamente los productos. El envío se cotiza por WhatsApp y se paga por separado."
-                              : "La disponibilidad y el envío se validan con la tienda. Recibirás confirmación por WhatsApp."}
-                          </p>
-                        )}
                       </div>
 
                       <details className="group rounded-2xl bg-[#fffaf5] p-3 ring-1 ring-slate-100">
@@ -1149,7 +1159,7 @@ ${customerForm.notes || "Sin notas."}`;
                           }
                           rows={2}
                           className="mt-3 min-h-16 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none transition focus:border-rose-300"
-                          placeholder="Ej. Tocar el timbre o entregar por la tarde."
+                          placeholder="Tocar el timbre o entregar por la tarde."
                         />
                       </details>
                     </div>
@@ -1222,91 +1232,16 @@ ${customerForm.notes || "Sin notas."}`;
                         })}
                       </div>
 
-                      <div className="rounded-2xl bg-[#fffaf5] p-4">
-                        {shipping.requiresQuote ? (
-                          <div className="space-y-2 text-sm font-bold text-slate-600">
-                            <div className="flex items-center justify-between gap-3">
-                              <span>Total de productos</span>
-                              <span className="font-black text-slate-950">
-                                {formatPrice(subtotal)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                              <span>Envío</span>
-                              <span className="text-right font-black text-amber-700">
-                                Se cotiza por WhatsApp
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
-                              <span>{quotedShippingPaymentLabel}</span>
-                              <span className="text-lg font-black text-slate-950">
-                                {formatPrice(subtotal)}
-                              </span>
-                            </div>
-                            <p className="rounded-2xl bg-white px-4 py-3 text-xs font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
-                              El envío queda pendiente de cotización y pago por separado.
-                            </p>
-                          </div>
-                        ) : (
-                          <div className="space-y-2 text-sm font-bold text-slate-600">
-                            <div className="flex items-center justify-between gap-3">
-                              <span>Subtotal</span>
-                              <span className="font-black text-slate-950">
-                                {formatPrice(subtotal)}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-3">
-                              <span>Envío nacional</span>
-                              <span className="font-black text-slate-950">
-                                {shippingDisplay}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
-                              <span>Total</span>
-                              <span className="text-lg font-black text-slate-950">
-                                {formatPrice(total)}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="rounded-2xl bg-[#fffaf5] p-4">
-                        <p className="text-xs font-black uppercase text-slate-400">
-                          Forma de pago
-                        </p>
-                        <p className="mt-1 text-sm font-black text-slate-950">
-                          {paymentPreferenceText}
-                        </p>
-                        <p className="mt-1 text-xs font-bold text-slate-500">
-                          Estado de pago: {paymentStatusText}
-                        </p>
-                      </div>
-
-                      <div className="rounded-2xl bg-white p-4 text-sm font-bold leading-6 text-slate-600 ring-1 ring-slate-100">
-                        <p>
-                          La disponibilidad y el envío se validan con la tienda. Recibirás confirmación por WhatsApp.
-                        </p>
-                        <p className="mt-2">
-                          Tu pedido se enviará a la dirección indicada.
-                        </p>
-                        {shipping.requiresQuote && (
-                          <p className="mt-2">
-                            El envío queda pendiente de cotización y pago por separado.
-                          </p>
-                        )}
-                      </div>
-
                       {shipping.requiresQuote && (
-                        <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-100">
-                          <label className="flex cursor-pointer items-start gap-3 text-sm font-bold leading-6 text-amber-900">
+                        <div className="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-100">
+                          <label className="flex cursor-pointer items-start gap-2.5 text-xs font-bold leading-5 text-amber-900 sm:text-sm">
                             <input
                               type="checkbox"
                               checked={shippingQuoteAcknowledged}
                               onChange={(event) =>
                                 setShippingQuoteAcknowledged(event.target.checked)
                               }
-                              className="mt-1 h-5 w-5 shrink-0 accent-slate-950"
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-slate-950 sm:h-5 sm:w-5"
                             />
                             <span>{shippingQuoteConfirmationText}</span>
                           </label>
@@ -1336,132 +1271,39 @@ ${customerForm.notes || "Sin notas."}`;
 
             <div className="shrink-0 border-t border-rose-100 bg-white/90 px-3 pb-[calc(0.625rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.06)] backdrop-blur-xl sm:p-4">
               {confirmation ? (
-                <div className="grid gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCloseCart}
-                    className="w-full rounded-full bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-sm shadow-slate-200 transition hover:bg-slate-800"
-                  >
-                    Cerrar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleCloseCart}
-                    className="w-full rounded-full bg-white px-4 py-2.5 text-sm font-black text-slate-700 shadow-sm ring-1 ring-slate-100 transition hover:bg-rose-50"
-                  >
-                    Volver a la tienda
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (confirmation.paymentPreference === "pay_now") {
-                        void handleStartPayment();
-                        return;
-                      }
-
-                      window.open(
-                        confirmation.whatsappUrl,
-                        "_blank",
-                        "noopener,noreferrer"
-                      );
-                    }}
-                    disabled={isStartingPayment}
-                    className="w-full rounded-full bg-emerald-50 px-4 py-2.5 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                  >
-                    {confirmation.paymentPreference === "pay_now"
-                      ? isStartingPayment
-                        ? "Preparando pago..."
-                        : "Continuar al pago"
-                      : "Abrir WhatsApp otra vez"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseCart}
+                  className="w-full rounded-full bg-slate-950 px-4 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800"
+                >
+                  Volver a la tienda
+                </button>
               ) : (
                 <>
-                  <div className="mb-2 sm:hidden">
-                    {shipping.requiresQuote ? (
-                      <>
-                        <p className="truncate text-[11px] font-bold text-slate-500">
-                          Total de productos {formatPrice(subtotal)} · Envío a cotizar
-                        </p>
-                        <div className="mt-0.5 flex items-center justify-between gap-3">
-                          <span className="text-xs font-black text-slate-600">
-                            {quotedShippingPaymentLabel}
-                          </span>
-                          <strong className="text-2xl font-black leading-none text-slate-950">
-                            {formatPrice(subtotal)}
-                          </strong>
-                        </div>
-                        <p className="mt-1 rounded-xl bg-amber-50 px-2.5 py-1 text-[10px] font-bold leading-4 text-amber-800 ring-1 ring-amber-100">
-                          Envío: se cotiza por WhatsApp y se paga por separado.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="truncate text-[11px] font-bold text-slate-500">
-                          Subtotal {formatPrice(subtotal)} · Envío{" "}
-                          {formatPrice(shippingCost)}
-                        </p>
-                        <div className="mt-0.5 flex items-center justify-between gap-3">
-                          <span className="text-xs font-black text-slate-600">
-                            Total
-                          </span>
-                          <strong className="text-2xl font-black leading-none text-slate-950">
-                            {formatPrice(total)}
-                          </strong>
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  <div className="mb-3 hidden space-y-1.5 sm:block">
-                    {shipping.requiresQuote ? (
-                      <>
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
-                          <span>Total de productos</span>
-                          <span className="text-slate-950">
-                            {formatPrice(subtotal)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
-                          <span>Envío</span>
-                          <span className="text-right text-amber-700">
-                            Se cotiza por WhatsApp
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between border-t border-rose-100 pt-1.5">
-                          <span className="text-sm font-black text-slate-600">
-                            {quotedShippingPaymentLabel}
-                          </span>
-                          <strong className="text-xl font-black text-slate-950 sm:text-2xl">
-                            {formatPrice(subtotal)}
-                          </strong>
-                        </div>
-                        <p className="rounded-2xl bg-amber-50 px-3 py-1.5 text-[11px] font-bold leading-5 text-amber-800 ring-1 ring-amber-100">
-                          El envío se cotiza por WhatsApp y se paga por separado.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
-                          <span>Subtotal</span>
-                          <span className="text-slate-950">
-                            {formatPrice(subtotal)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-500 sm:text-sm">
-                          <span>Envío nacional</span>
-                          <span className="text-slate-950">{shippingDisplay}</span>
-                        </div>
-                        <div className="flex items-center justify-between border-t border-rose-100 pt-1.5">
-                          <span className="text-sm font-black text-slate-600">
-                            Total
-                          </span>
-                          <strong className="text-xl font-black text-slate-950 sm:text-2xl">
-                            {formatPrice(total)}
-                          </strong>
-                        </div>
-                      </>
-                    )}
+                  <div className="mb-2 space-y-1 text-xs font-bold text-slate-500 sm:mb-3 sm:text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Productos</span>
+                      <span className="font-black text-slate-950">
+                        {formatPrice(subtotal)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span>Envío</span>
+                      <span className="text-right font-black text-amber-700">
+                        Se cotiza por WhatsApp
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between border-t border-rose-100 pt-1.5">
+                      <span className="font-black text-slate-700">
+                        {quotedShippingPaymentLabel}
+                      </span>
+                      <strong className="text-xl font-black leading-none text-slate-950 sm:text-2xl">
+                        {formatPrice(subtotal)}
+                      </strong>
+                    </div>
+                    <p className="text-[10px] font-semibold leading-4 text-slate-500 sm:text-[11px] sm:leading-5">
+                      El pago en línea cubre solo los productos. El envío se cotiza por WhatsApp y se paga al recibir o según acuerdo con la tienda.
+                    </p>
                   </div>
 
                   <div className="grid gap-2">
@@ -1491,12 +1333,6 @@ ${customerForm.notes || "Sin notas."}`;
                       </button>
                     ) : (
                       <>
-                        {shipping.requiresQuote && !shippingQuoteAcknowledged && (
-                          <p className="rounded-xl bg-amber-50 px-3 py-2 text-[11px] font-black leading-4 text-amber-800 ring-1 ring-amber-100">
-                            {shippingQuoteRequiredText}
-                          </p>
-                        )}
-
                         <button
                           type="button"
                           onClick={() => void handleConfirmOrder()}
@@ -1515,7 +1351,7 @@ ${customerForm.notes || "Sin notas."}`;
                           )}
                           {isSubmitting
                             ? customerForm.paymentPreference === "pay_now"
-                              ? "Preparando pago..."
+                              ? "Preparando tu pago…"
                               : "Guardando pedido..."
                             : customerForm.paymentPreference === "pay_now"
                               ? "Continuar al pago"
@@ -1576,7 +1412,7 @@ ${customerForm.notes || "Sin notas."}`;
                   <div className="w-full max-w-xs rounded-[1.5rem] bg-white px-6 py-7 text-center shadow-xl ring-1 ring-emerald-100">
                     <div className="mx-auto h-11 w-11 animate-spin rounded-full border-4 border-emerald-100 border-t-emerald-500" />
                     <h3 className="mt-4 text-lg font-black text-slate-950">
-                      Preparando tu pago...
+                      Preparando tu pago…
                     </h3>
                     <p className="mt-2 text-sm font-bold leading-6 text-slate-500">
                       Te redirigiremos de forma segura a Mercado Pago.

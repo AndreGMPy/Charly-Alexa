@@ -136,7 +136,7 @@ export function getWholesaleMode(product: Pick<WholesaleProductLike, "wholesaleM
 
 export function isWholesaleProduct(product: Pick<WholesaleProductLike, "wholesaleMode">) {
   const maybeRunProduct = product as WholesaleProductLike;
-  return isWholesaleRunProduct(maybeRunProduct) || getWholesaleMode(product) !== "none";
+  return isWholesaleRunProduct(maybeRunProduct);
 }
 
 export function getWholesaleMinQuantity(
@@ -245,22 +245,6 @@ export function getWholesaleLabel(
     wholesaleRunPrice
   ) {
     return `Mayoreo corrido ${formatCurrency(wholesaleRunPrice)} por pieza`;
-  }
-
-  const mode = getWholesaleMode(product);
-  const wholesalePrice = getWholesaleUnitPrice(product);
-
-  if (mode === "mixed") {
-    if (!normalizedSettings.mixedWholesaleEnabled || !wholesalePrice) return "";
-    return `Mayoreo surtido desde ${normalizedSettings.mixedWholesaleMinQuantity} piezas`;
-  }
-
-  if (mode === "product") {
-    const minQuantity = getWholesaleMinQuantity(product);
-    if (!wholesalePrice) return "";
-    return minQuantity > 0
-      ? `Mayoreo por producto desde ${minQuantity} piezas`
-      : "Mayoreo por producto";
   }
 
   return "";
@@ -511,10 +495,6 @@ export function validateWholesaleCart(
           "Este producto aplica para mayoreo corrido. Agrega las tallas faltantes del mismo color para activar el precio de mayoreo.",
         ]
       : []),
-    ...(mixedMissing > 0 ? [getMixedWholesaleCartMessage(mixedMissing)] : []),
-    ...missingByProduct.map((item) =>
-      getProductWholesaleCartMessage(item.productName, item.missing)
-    ),
   ];
 
   return {

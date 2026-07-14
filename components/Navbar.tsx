@@ -5,6 +5,7 @@ import { getActiveProducts } from "@/lib/firebase-services/products";
 import { mapFirebaseProductToProduct } from "@/lib/product-mappers";
 import {
   formatPrice,
+  getProductDisplayLabel,
   getSectionLabels,
   getSubcategoryLabels,
   isPublicStoreProduct,
@@ -175,8 +176,7 @@ export default function Navbar() {
                       </p>
 
                       <p className="text-xs font-bold text-slate-400">
-                        {getSectionLabels(product) || product.category} ·{" "}
-                        {getSubcategoryLabels(product) || product.subcategory}
+                        {getProductDisplayLabel(product) || product.category}
                       </p>
                     </div>
 
@@ -264,8 +264,7 @@ export default function Navbar() {
                         </p>
 
                         <p className="mt-1 text-xs font-bold text-slate-400">
-                          {getSectionLabels(product) || product.category} ·{" "}
-                          {getSubcategoryLabels(product) || product.subcategory} ·{" "}
+                          {getProductDisplayLabel(product) || product.category} ·{" "}
                           {formatPrice(product.price)}
                         </p>
                       </Link>

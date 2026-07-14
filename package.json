@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "desktop:build": "npm --prefix desktop run build",
+    "desktop:tauri:build": "npm --prefix desktop run tauri build",
     "set-admin": "node scripts/set-admin-claim.mjs usuario1@charlyalexa.com"
   },
   "dependencies": {

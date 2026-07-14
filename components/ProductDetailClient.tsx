@@ -7,15 +7,15 @@ import {
   formatPrice,
   getAvailabilityLabel,
   getProductBadges,
+  getProductDisplayLabel,
   getProductStockForColorAndSize,
-  getSectionLabels,
   getSubcategoryLabels,
   isProductColorSizeAvailable,
   productAppearsInSection,
   type Product,
 } from "@/lib/products";
 import { buildWhatsAppUrlWithNumber, useSiteSettings } from "@/hooks/useSiteSettings";
-import { getWholesaleLabel, normalizeWholesaleMode } from "@/lib/wholesale";
+import { getWholesaleLabel } from "@/lib/wholesale";
 import { useCartStore } from "@/store/cart-store";
 import {
   ArrowLeft,
@@ -72,7 +72,6 @@ export default function ProductDetailClient({
     ? selectedColor
     : product.colors[0] ?? "Sin color";
   const wholesaleLabel = getWholesaleLabel(product, settings.wholesaleSettings);
-  const wholesaleMode = normalizeWholesaleMode(product.wholesaleMode);
   const hasWholesale = Boolean(wholesaleLabel);
   const hasWholesaleRun =
     Boolean(product.wholesaleRunEnabled) &&
@@ -89,9 +88,7 @@ export default function ProductDetailClient({
   const addButtonLabel = isOutOfStock
     ? "Agotado"
     : selectedSize
-      ? hasWholesale
-        ? "Agregar al mayoreo"
-        : "Agregar al carrito"
+      ? "Agregar al carrito"
       : "Seleccionar talla";
 
   const backHref =
@@ -369,8 +366,7 @@ Observaciones:`;
             </div>
 
             <p className="text-[11px] font-black uppercase text-slate-400 sm:text-xs">
-              {product.brand} · {getSectionLabels(product) || product.category} ·{" "}
-              {getSubcategoryLabels(product) || product.subcategory}
+              {product.brand} · {getProductDisplayLabel(product) || product.category}
             </p>
 
             <h1 className="mt-2 text-3xl font-black leading-[1] text-slate-950 sm:mt-3 sm:text-4xl lg:text-[2.7rem]">
@@ -392,23 +388,20 @@ Observaciones:`;
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-600">
-                      {hasWholesaleRun ? "Mayoreo corrido disponible" : "Mayoreo disponible"}
+                      Mayoreo corrido disponible
                     </p>
                     <h2 className="mt-1 text-lg font-black text-slate-950">
-                      {wholesaleLabel}
+                      Precio mayoreo: {formatPrice(product.wholesaleRunPrice ?? 0)} por pieza
                     </h2>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-500 sm:text-sm">
-                      {hasWholesaleRun
-                        ? "Mayoreo corrido disponible: 1 pieza de cada talla del mismo color."
-                        : wholesaleMode === "mixed"
-                          ? "Este producto conserva una regla de mayoreo surtido heredada."
-                          : "El mínimo se completa con este mismo producto, aunque cambie la talla."}
+                      El mayoreo corrido aplica cuando el cliente lleva 1 pieza de cada talla configurada, todas del mismo color.
                     </p>
-                    {hasWholesaleRun && (
-                      <p className="mt-2 text-xs font-black text-amber-700">
-                        Ej. {activeSelectedColor}: talla {wholesaleRunSizes.join(" + ")}
-                      </p>
-                    )}
+                    <p className="mt-2 text-xs font-black text-amber-700">
+                      Corrida: talla {wholesaleRunSizes.join(" + ")}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-amber-800">
+                      Debe ser del mismo color.
+                    </p>
                     {product.wholesaleNote && (
                       <p className="mt-2 text-xs font-black text-amber-700">
                         {product.wholesaleNote}
@@ -423,7 +416,7 @@ Observaciones:`;
                     className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-sm font-black text-white shadow-lg shadow-slate-200 transition hover:scale-[1.02] hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                   >
                     <ShoppingBag size={17} />
-                    {hasWholesaleRun ? "Agregar corrida" : "Agregar al mayoreo"}
+                    Agregar corrida
                   </button>
                 </div>
               </div>

@@ -197,12 +197,15 @@ function isProductSection(value: unknown): value is ProductSection {
 
 export function normalizeProductSections(product: {
   sections?: unknown;
+  subcategories?: unknown;
+  subcategory?: ProductSubcategory | string | null;
   category?: ProductCategory | string | null;
 }): ProductSection[] {
   const savedSections = Array.isArray(product.sections)
     ? product.sections.filter(isProductSection)
     : [];
   const sections = new Set<ProductSection>();
+  const hasUnisexSubcategory = productHasUnisexSubcategory(product);
 
   for (const section of savedSections) {
     if (section === "unisex") {
@@ -213,18 +216,38 @@ export function normalizeProductSections(product: {
     }
   }
 
-  if (sections.size > 0) {
-    return Array.from(sections);
+  const fallbackSection = categoryToSection(product.category);
+  if (sections.size === 0) {
+    if (fallbackSection === "unisex") {
+      sections.add("nina");
+      sections.add("nino");
+    } else if (fallbackSection) {
+      sections.add(fallbackSection);
+    }
   }
 
-  const fallbackSection = categoryToSection(product.category);
-  if (fallbackSection === "unisex") return ["nina", "nino"];
+  if (hasUnisexSubcategory) {
+    const [primarySection] = Array.from(sections);
 
-  return fallbackSection ? [fallbackSection] : [];
+    if (primarySection === "nino") {
+      sections.add("nino");
+      sections.add("nina");
+    } else {
+      sections.add("nina");
+      sections.add("nino");
+    }
+  }
+
+  return Array.from(sections);
 }
 
 export function productAppearsInSection(
-  product: { sections?: unknown; category?: ProductCategory | string | null },
+  product: {
+    sections?: unknown;
+    subcategories?: unknown;
+    subcategory?: ProductSubcategory | string | null;
+    category?: ProductCategory | string | null;
+  },
   section: ProductSection
 ) {
   return normalizeProductSections(product).includes(section);
@@ -259,6 +282,24 @@ function normalizeTextValue(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+export function productHasUnisexSubcategory(product: {
+  subcategories?: unknown;
+  subcategory?: ProductSubcategory | string | null;
+}) {
+  const values = Array.isArray(product.subcategories)
+    ? product.subcategories.filter(
+        (subcategory): subcategory is string =>
+          typeof subcategory === "string" && subcategory.trim().length > 0
+      )
+    : [];
+
+  if (typeof product.subcategory === "string" && product.subcategory.trim()) {
+    values.push(product.subcategory.trim());
+  }
+
+  return values.some((value) => normalizeTextValue(value) === "unisex");
 }
 
 function hasLegacyUnisexSection(product: {
@@ -327,6 +368,42 @@ export function getSubcategoryLabels(product: {
   category?: ProductCategory | string | null;
 }) {
   return normalizeProductSubcategories(product).join(", ");
+}
+
+export function getProductDisplayLabel(product: {
+  sections?: unknown;
+  subcategories?: unknown;
+  subcategory?: ProductSubcategory | string | null;
+  category?: ProductCategory | string | null;
+}) {
+  const directSection = categoryToSection(product.category);
+  const normalizedSections = normalizeProductSections(product);
+  const displaySection =
+    directSection === "nina" || directSection === "nino"
+      ? directSection
+      : normalizedSections[0];
+  const categoryLabel = displaySection
+    ? sectionToCategory(displaySection)
+    : normalizeProductCategory(product.category);
+  const subcategoryLabels = normalizeProductSubcategories(product);
+  const orderedSubcategoryLabels = [
+    ...subcategoryLabels.filter(
+      (subcategory) => normalizeTextValue(subcategory) === "unisex"
+    ),
+    ...subcategoryLabels.filter(
+      (subcategory) => normalizeTextValue(subcategory) !== "unisex"
+    ),
+  ];
+  const labels = [categoryLabel, ...orderedSubcategoryLabels].filter(Boolean);
+  const uniqueLabels = new Map<string, string>();
+
+  for (const label of labels) {
+    const key = normalizeTextValue(label);
+    if (!key || uniqueLabels.has(key)) continue;
+    uniqueLabels.set(key, label);
+  }
+
+  return Array.from(uniqueLabels.values()).join(" · ");
 }
 
 export const colorOptions = [

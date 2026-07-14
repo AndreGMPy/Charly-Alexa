@@ -38,6 +38,7 @@ const ORDERS_COLLECTION = "orders";
 export type WebOrderCreateInput = {
   customerName: string;
   customerPhone: string;
+  customerEmail?: string;
   deliveryMethod: DeliveryMethod;
   address: string;
   deliveryAddress?: DeliveryAddress;
@@ -121,6 +122,7 @@ function mapOrderDoc(
     },
     customerName,
     customerPhone,
+    customerEmail: data.customerEmail ?? customer.email ?? "",
     deliveryMethod: data.deliveryMethod,
     address,
     customerAddress: data.customerAddress,

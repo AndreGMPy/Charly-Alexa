@@ -181,6 +181,7 @@ export type FirebaseOrder = {
   customer?: Omit<FirebaseCustomer, "id" | "createdAt" | "updatedAt">;
   customerName?: string;
   customerPhone?: string;
+  customerEmail?: string;
   deliveryMethod?: DeliveryMethod;
   address?: string;
   customerAddress?: string;

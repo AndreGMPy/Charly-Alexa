@@ -334,46 +334,8 @@ export default function AdminSettingsPage() {
             />
           </label>
 
-          <label className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-[#fffaf5] px-4 py-3 ring-1 ring-rose-100">
-            <span className="min-w-0">
-              <span className="block text-sm font-black text-slate-800">
-                Mantener mayoreo surtido heredado
-              </span>
-              <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
-                Solo para productos antiguos que todavía usen esa regla.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={form.wholesaleSettings.mixedWholesaleEnabled}
-              onChange={(event) =>
-                updateWholesaleField(
-                  "mixedWholesaleEnabled",
-                  event.target.checked
-                )
-              }
-              className="h-5 w-5 shrink-0 accent-rose-500"
-            />
-          </label>
-
-          <label className="space-y-2">
-            <span className={labelClass}>Mínimo general heredado</span>
-            <input
-              value={form.wholesaleSettings.mixedWholesaleMinQuantity}
-              onChange={(event) =>
-                updateWholesaleField(
-                  "mixedWholesaleMinQuantity",
-                  Math.max(Number(event.target.value) || 0, 0)
-                )
-              }
-              className={fieldClass}
-              inputMode="numeric"
-              placeholder="Ej. 6"
-            />
-          </label>
-
           <label className="space-y-2 lg:col-span-2">
-            <span className={labelClass}>Texto general de mayoreo</span>
+            <span className={labelClass}>Texto de mayoreo corrido</span>
             <input
               value={form.wholesaleSettings.wholesaleInfoText}
               onChange={(event) =>

@@ -10,6 +10,7 @@ import {
 import type { FirebaseDate, FirebaseOrder, OrderStatus } from "@/lib/firebase-types";
 import { getDeliveryAddressLines } from "@/lib/delivery-address";
 import { formatPrice } from "@/lib/products";
+import { buildOrderReceiptText } from "@/lib/receipts";
 import { buildWhatsAppUrlWithNumber } from "@/hooks/useSiteSettings";
 import {
   ClipboardList,
@@ -117,7 +118,7 @@ function orderRequiresShippingQuote(order: FirebaseOrder) {
 }
 
 function formatOrderShipping(order: FirebaseOrder) {
-  if (orderRequiresShippingQuote(order)) return "Pendiente de cotizar";
+  if (orderRequiresShippingQuote(order)) return "A cotizar";
   return formatPrice(getShippingCost(order));
 }
 
@@ -216,6 +217,8 @@ function matchesOrderSearch(order: FirebaseOrder, searchTerm: string) {
 }
 
 function buildCustomerMessage(order: FirebaseOrder) {
+  return buildOrderReceiptText(order);
+  /* Compatibilidad histórica del mensaje detallado:
   const productsText = order.items
     .map(
       (item) => `- ${getItemName(item)}
@@ -242,7 +245,7 @@ function buildCustomerMessage(order: FirebaseOrder) {
     : "";
   const totalsText = orderRequiresShippingQuote(order)
     ? `Total de productos: ${formatPrice(order.subtotal)}
-Envío: Pendiente de cotizar
+Envío: A cotizar
 Pago de productos: ${formatPrice(getOrderPayableProductsTotal(order))}`
     : `Subtotal: ${formatPrice(order.subtotal)}
 Envío: ${formatOrderShipping(order)}
@@ -259,7 +262,7 @@ ${totalsText}
 Estado de pago: ${getPaymentStatusLabel(order)}
 Método de pago: ${getPaymentProviderLabel(order)}${quoteText}
 
-Estado actual: ${getSpanishStatus(order.status)}`;
+  Estado actual: ${getSpanishStatus(order.status)}`; */
 }
 
 function getOrderDeliveryAddressLines(order: FirebaseOrder) {
@@ -286,6 +289,7 @@ export default function AdminOrdersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [busyOrderId, setBusyOrderId] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState("");
+  const [ticketOrderId, setTicketOrderId] = useState("");
   const [orderFilter, setOrderFilter] = useState<OrderFilter>("Todos");
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState("");
@@ -466,6 +470,15 @@ export default function AdminOrdersPage() {
       toast.success("Dirección copiada.");
     } catch {
       toast.error("No se pudo copiar la dirección.");
+    }
+  }
+
+  async function handleCopyTicket(order: FirebaseOrder) {
+    try {
+      await navigator.clipboard.writeText(buildOrderReceiptText(order));
+      toast.success("Ticket copiado.");
+    } catch {
+      toast.error("No se pudo copiar el ticket.");
     }
   }
 
@@ -879,7 +892,7 @@ export default function AdminOrdersPage() {
                       </p>
                       <p className="mt-1 text-sm font-black text-slate-950">
                         {orderRequiresShippingQuote(order)
-                          ? "Pendiente de cotizar"
+                          ? "A cotizar"
                           : "No requiere"}
                       </p>
                     </div>
@@ -979,7 +992,7 @@ export default function AdminOrdersPage() {
                         <div className="flex items-center justify-between gap-3">
                           <span>Envío</span>
                           <span className="text-right font-black text-amber-700">
-                            Pendiente de cotizar
+                            A cotizar
                           </span>
                         </div>
                         <div className="flex items-center justify-between gap-3 border-t border-rose-100 pt-2">
@@ -1015,7 +1028,37 @@ export default function AdminOrdersPage() {
                 </div>
               )}
 
+              {ticketOrderId === order.id && (
+                <pre className="mt-3 whitespace-pre-wrap rounded-2xl bg-[#fffaf5] p-4 text-xs font-bold leading-5 text-slate-700 ring-1 ring-rose-100">
+                  {buildOrderReceiptText(order)}
+                </pre>
+              )}
+
               <div className="mt-3 flex flex-wrap gap-2 sm:mt-5">
+                <button
+                  type="button"
+                  onClick={() => setTicketOrderId(ticketOrderId === order.id ? "" : order.id)}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-violet-50 px-4 py-2 text-xs font-black text-violet-700 transition hover:bg-violet-100"
+                >
+                  <ClipboardList size={15} />
+                  {ticketOrderId === order.id ? "Ocultar ticket" : "Ver ticket"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyTicket(order)}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-200"
+                >
+                  <Copy size={15} />
+                  Copiar ticket
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleWhatsApp(order)}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+                >
+                  <MessageCircle size={15} />
+                  Enviar por WhatsApp
+                </button>
                 <button
                   type="button"
                   onClick={() =>

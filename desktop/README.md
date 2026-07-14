@@ -1,117 +1,118 @@
 # Charly Alexa POS para Windows
 
-Este paquete prepara una aplicacion de escritorio separada de la tienda publica.
-La tienda y el panel web siguen desplegados con Firebase Hosting/App Hosting; el
-POS no reemplaza rutas, checkout, Mercado Pago ni pedidos web.
+Aplicacion de escritorio separada de la tienda publica. No reemplaza la tienda,
+checkout, Mercado Pago ni pedidos web. El POS trabaja localmente con Tauri 2,
+React/Vite y SQLite.
 
-## Decision de arquitectura
+## Requisitos en Windows
 
-Se eligio **Tauri 2 + React/Vite + SQLite**.
+- Node.js LTS.
+- Rust y Cargo estables con toolchain MSVC.
+- Microsoft C++ Build Tools con "Desktop development with C++".
+- Microsoft Edge WebView2 Runtime.
 
-| Criterio | Tauri | Electron |
-| --- | --- | --- |
-| Runtime | WebView2 del sistema + backend Rust | Chromium + Node incluidos |
-| Instalador | NSIS `.exe` o WiX `.msi` | Requiere empaquetador como Electron Forge |
-| Base local | SQLite mediante plugin oficial | SQLite mediante modulo Node nativo |
-| Superficie privilegiada | Capacidades y comandos explicitos | Proceso main/preload/renderer |
-| Ajuste al POS | Menor huella y API nativa acotada | Desarrollo JS mas directo, instalador mayor |
+## Instalacion rapida
 
-Electron sigue siendo una alternativa valida si el equipo no quiere mantener
-Rust o necesita APIs Node especificas. Para una sola terminal Windows, Tauri
-reduce la huella instalada y obliga a delimitar las capacidades nativas.
-
-## Modelo offline-first
-
-```text
-React POS -> servicios de aplicacion -> repositorios -> SQLite local
-                                   -> sync_queue -> adaptador Firebase (fase 2)
-```
-
-- SQLite es la fuente operativa mientras se vende. Crear una venta, descontar
-  variantes y encolar la sincronizacion debe ocurrir en una sola transaccion.
-- Cada registro local usa UUID y las ventas conservan `localFolio`. El
-  `firebaseId` se agrega despues de una confirmacion idempotente del servidor.
-- La tienda publica sigue online. El POS no crea pedidos web y no llama Mercado
-  Pago. Una venta local solo se replica como venta de mostrador cuando hay red.
-- Productos remotos se descargan por `updatedAt`. Un stock remoto mas nuevo no
-  se pisa: se registra un conflicto y se reconcilian movimientos.
-- Una falla nunca elimina la operacion; incrementa `attempts` y conserva la cola
-  con estado `failed` para reintento.
-
-Mensaje obligatorio en modo offline:
-
-> Modo sin conexion: las ventas se guardaran en este equipo y se sincronizaran cuando vuelva internet.
-
-## Estructura
-
-- `src/domain`: tipos, permisos y reglas puras del POS.
-- `src/pos`: calculo de ventas, pago mixto y ticket.
-- `src/inventory`: validacion de stock y corrida mayoreo.
-- `src/database`: contrato de persistencia local.
-- `src/sync`: cola, estados y politica de conflictos; no contiene credenciales.
-- `src-tauri/migrations`: esquema SQLite versionado.
-- `src-tauri`: shell Tauri y configuracion de instalador NSIS.
-
-El calculo definitivo de carrito debe reutilizar la semantica de
-`../lib/wholesale.ts`. En fase 2 conviene convertir `lib/wholesale.ts` y
-`lib/variant-utils.ts` en un paquete de dominio compartido por web y desktop;
-no se movieron ahora para no alterar la tienda estable.
-
-## Alcance preparado
-
-La capa de dominio contempla busqueda por nombre/categoria/subcategoria/color/
-talla, venta en espera, corrida por color, descuentos, pago mixto, apartados,
-clientes, corte, tickets, inventario, roles y cola de sincronizacion. La
-migracion incluye todas las tablas necesarias y tablas auxiliares para usuarios,
-ventas en espera, articulos de apartado y conflictos.
-
-La UI incluida es una consola inicial de arquitectura. La persistencia y los
-casos de uso estan definidos por interfaces para implementar cada pantalla sin
-acoplarla a Firebase.
-
-## Fases
-
-1. **Fase 1:** implementar repositorio Tauri/SQLite, login local con Argon2,
-   venta rapida, venta en espera, ticket y corte; probar transacciones ante cierre
-   inesperado.
-2. **Fase 2:** backend idempotente de sincronizacion, clientes, apartados,
-   inventario avanzado y resolucion de conflictos. Las reglas de Firebase deben
-   revisarse en una tarea autorizada separada.
-3. **Fase 3:** importacion Excel, reportes, firma de codigo, actualizador y
-   publicacion del instalador.
-
-## Preparar y compilar
-
-Requisitos de Windows: Rust estable MSVC, Microsoft C++ Build Tools con
-"Desktop development with C++" y WebView2. Despues:
+Desde la raiz del proyecto:
 
 ```powershell
+npm install
 cd desktop
 npm install
-npm run build
-npm run tauri build
+npm.cmd run build
+npm.cmd run tauri build
 ```
 
-`npm run tauri build` generara un instalador NSIS `-setup.exe`. Antes de
-distribuirlo faltan iconos finales, certificado de firma, credenciales de
-Firebase administradas de forma segura, pruebas E2E con perdida de red y la
-implementacion del adaptador remoto.
+El instalador debe quedar en alguna de estas rutas:
 
-Comprobacion de este equipo al crear el esqueleto: WebView2 esta instalado;
-Rust, Cargo y Microsoft C++ Build Tools todavia no estan disponibles. Por eso se
-valido el frontend, pero no se genero el binario nativo.
+- `desktop/src-tauri/target/release/bundle/nsis/`
+- `desktop/src-tauri/target/release/bundle/msi/`
 
-## Limites de conectividad
+El build configurado usa NSIS, por lo que el archivo esperado es un `.exe` tipo
+setup dentro de `bundle/nsis`.
 
-Funciona sin internet una vez implementados los repositorios: catalogo ya
-sincronizado, venta, descuento local, inventario, ticket, apartado y corte.
-El login diario sera local y funciona offline. Requieren internet: alta o
-renovacion remota de una terminal, descarga de productos, subida de cola,
-reconciliacion y cualquier operacion de Mercado Pago.
+## Scripts utiles
 
-## Referencias de implementacion
+Dentro de `desktop`:
 
-- Tauri para Windows: https://v2.tauri.app/start/prerequisites/
-- SQLite y migraciones Tauri: https://v2.tauri.app/plugin/sql/
-- Instalador NSIS/MSI: https://v2.tauri.app/distribute/windows-installer/
-- Modelo de procesos Electron: https://www.electronjs.org/docs/latest/tutorial/process-model
+- `npm.cmd run typecheck`: valida TypeScript sin emitir archivos.
+- `npm.cmd run build`: valida TypeScript y compila Vite.
+- `npm.cmd run check`: alias de validacion completa del frontend desktop.
+- `npm.cmd run tauri dev`: abre la app Tauri en modo desarrollo.
+- `npm.cmd run tauri build`: genera el binario y el instalador de Windows.
+
+Desde la raiz:
+
+- `npm.cmd run desktop:build`
+- `npm.cmd run desktop:tauri:build`
+
+## Acceso inicial
+
+- Usuario: `admin@charlyalexa.com`
+- Contrasena: `admin123`
+
+El usuario se crea en SQLite local si no existe. En esta fase la contrasena se
+guarda con hash SHA-256 para mantener el POS funcional sin dependencias nativas
+extra; para produccion debe migrarse a Argon2 o bcrypt con sal.
+
+## Funciona offline en Fase 1
+
+- Login local.
+- Boton `Cargar productos de prueba`, solo en SQLite local.
+- Busqueda y filtros de productos locales.
+- Venta por producto, color, talla y cantidad.
+- Descuentos en pesos o porcentaje.
+- Pago en efectivo, transferencia, tarjeta o mixto.
+- Validacion de pago mixto contra el total.
+- Mayoreo corrido por producto/color con stock por cada talla.
+- Registro de venta en SQLite.
+- Descuento de inventario transaccional.
+- Ticket visible, copiar ticket e imprimir con `window.print()`.
+- Historial de ventas con busqueda por folio y filtro por fecha.
+- Cancelacion de venta con devolucion de inventario.
+- Inventario por color/talla, bajo stock, agotados y ajuste manual.
+- Corte de caja local y cola `sync_queue` con estado `pending`.
+
+## Productos de prueba
+
+El boton `Cargar productos de prueba` inserta datos solo si la tabla de
+productos esta vacia. No sube nada a Firebase.
+
+- Vestido Floral Arcoiris: Nina, Vestidos, colores Rosa/Blanco/Amarillo,
+  tallas 2 a 16, precio 315, mayoreo corrido 250 por pieza.
+- Chamarra Explorer: Nino, Chamarras, colores Azul/Beige, tallas 2 a 12,
+  precio 420, mayoreo corrido 300 por pieza.
+
+## Roles
+
+- `administrador`: vender, cancelar ventas, ajustar inventario, cerrar corte y
+  operar configuraciones sensibles.
+- `vendedor`: vender, ver productos y cerrar corte. No puede ajustar inventario,
+  modificar productos ni cambiar precios base.
+
+## Impresion
+
+La impresion actual usa `window.print()` con formato de ticket termico
+aproximado de 80 mm. La impresion directa o silenciosa a impresora termica se
+integrara despues con un plugin/controlador especifico para Windows/Tauri.
+
+## Sincronizacion
+
+La app muestra `Trabajando local`, `Sin conexion`, `Pendientes por sincronizar`
+o `Sincronizado` segun la cola local. En esta fase no se conecta a Firebase.
+
+Quedan stubs claros para Fase 2:
+
+- `pullProductsFromFirebase()`
+- `pushPendingSalesToFirebase()`
+- `pushStockMovementsToFirebase()`
+- `pushCashCutsToFirebase()`
+
+## Requiere internet o Fase 2
+
+- Sincronizacion real con Firebase.
+- Descarga de productos remotos.
+- Subida de ventas, movimientos y cortes.
+- Reconciliacion de conflictos.
+- Mercado Pago, pedidos web y actualizaciones publicas de la tienda.
+- Firma de codigo, icono final, instalador definitivo y actualizaciones.
