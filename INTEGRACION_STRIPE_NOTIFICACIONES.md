@@ -42,14 +42,24 @@ Si el dominio aun no esta verificado, usa temporalmente un remitente permitido p
 1. En Firebase Console abre Project settings > Cloud Messaging.
 2. Genera o copia la Web Push certificate key pair.
 3. Coloca la clave publica en `NEXT_PUBLIC_FIREBASE_VAPID_KEY`.
-4. El service worker publico es `/firebase-messaging-sw.js`; carga su configuracion desde `/api/firebase/messaging-sw-runtime`.
+4. El service worker publico y autocontenido es `/firebase-messaging-sw.js`.
 5. Entra al panel desde el telefono de la clienta.
 6. Ve a `/admin/configuracion`.
 7. Presiona “Activar notificaciones de pedidos”.
 8. Acepta el permiso del navegador.
 9. Usa “Enviar notificacion de prueba” para comprobar el dispositivo actual.
 
-Compatibilidad: Chrome/Edge/Android funcionan bien. iOS requiere Safari compatible con Web Push y que el sitio este agregado a la pantalla de inicio. Si el permiso fue rechazado, hay que cambiarlo desde ajustes del navegador o del sistema.
+Espera el mensaje "Notificaciones activadas correctamente" antes de enviar la prueba. El worker se registra con scope `/`, espera el estado `activated` antes de crear el token y recibe mensajes aunque el panel este cerrado. Los mensajes con el panel visible se muestran dentro del panel; en segundo plano se muestran como notificacion del sistema.
+
+Compatibilidad: Chrome y Edge de escritorio, y Chrome en Android, funcionan en `localhost` o bajo HTTPS. En iPhone/iOS abre el sitio en Safari, agregalo a la pantalla de inicio, abre la aplicacion instalada y acepta el permiso desde esa aplicacion. Si el permiso fue rechazado, cambialo desde los ajustes del navegador o del sistema antes de reintentar.
+
+Para diagnosticar en Chrome abre DevTools > Application > Service Workers. Debe aparecer:
+
+- Source: `/firebase-messaging-sw.js`
+- Status: `activated and running`
+- Scope: `http://localhost:3000/` en desarrollo o la raiz HTTPS del dominio en produccion.
+
+En desarrollo existe el boton "Reiniciar configuracion de notificaciones". Desactiva el token del dispositivo, elimina la suscripcion local y desregistra exclusivamente el worker de Firebase Messaging. Recarga la pagina antes de volver a activarlo. El boton no se incluye en produccion.
 
 Los tokens se guardan en `adminNotificationTokens`, ligados al UID administrador. Si Firebase reporta un token invalido, se marca `active: false`.
 

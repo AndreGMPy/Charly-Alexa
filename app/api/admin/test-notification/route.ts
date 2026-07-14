@@ -20,6 +20,15 @@ export async function POST(request: Request) {
     const result = await sendAdminTestNotification(admin.uid, token);
 
     if (!result.sent) {
+      if (result.reason === "invalid_token") {
+        return Response.json({
+          ok: false,
+          invalidated: result.invalidated,
+          message:
+            "El registro de este dispositivo ya no es valido. Activa las notificaciones nuevamente.",
+        });
+      }
+
       return Response.json(
         { message: "No fue posible enviar la notificacion de prueba." },
         { status: 404 }

@@ -6,8 +6,8 @@ import {
   sendCustomerOrderConfirmationEmail,
 } from "@/lib/email";
 import type { FirebaseOrder } from "@/lib/firebase-types";
-import { getAppUrl } from "@/lib/stripe";
 import { FieldValue } from "firebase-admin/firestore";
+import { createHash } from "node:crypto";
 
 const ORDERS_COLLECTION = "orders";
 const TOKENS_COLLECTION = "adminNotificationTokens";
@@ -26,9 +26,47 @@ function getOrderFolio(order: FirebaseOrder) {
 function isInvalidMessagingToken(code?: string) {
   return (
     code === "messaging/registration-token-not-registered" ||
-    code === "messaging/invalid-registration-token" ||
-    code === "messaging/invalid-argument"
+    code === "messaging/invalid-registration-token"
   );
+}
+
+type StoredAdminToken = {
+  id: string;
+  token: string;
+};
+
+function tokenDocId(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+async function deactivateInvalidTokens(
+  tokens: StoredAdminToken[],
+  responses: Array<{
+    success: boolean;
+    error?: { code?: string };
+  }>
+) {
+  const firestore = getAdminFirestore();
+  const batch = firestore.batch();
+  let invalidated = 0;
+
+  responses.forEach((response, index) => {
+    if (!response.success && isInvalidMessagingToken(response.error?.code)) {
+      invalidated += 1;
+      batch.set(
+        firestore.collection(TOKENS_COLLECTION).doc(tokens[index].id),
+        {
+          active: false,
+          invalidatedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  });
+
+  if (invalidated > 0) await batch.commit();
+  return invalidated;
 }
 
 async function getOrder(orderId: string) {
@@ -97,11 +135,17 @@ export async function sendPaidOrderNotifications(orderId: string) {
 
   if (!notifications.pushSentAt) {
     try {
-      await sendPushForPaidOrder(order);
-      await updateNotificationField(orderId, {
-        pushSentAt: FieldValue.serverTimestamp(),
-        pushError: FieldValue.delete(),
-      });
+      const result = await sendPushForPaidOrder(order);
+      if (result.sent) {
+        await updateNotificationField(orderId, {
+          pushSentAt: FieldValue.serverTimestamp(),
+          pushError: FieldValue.delete(),
+        });
+      } else {
+        await updateNotificationField(orderId, {
+          pushError: result.reason,
+        });
+      }
     } catch (error) {
       await updateNotificationField(orderId, {
         pushError:
@@ -123,96 +167,91 @@ export async function sendPushForPaidOrder(order: FirebaseOrder) {
 
   if (tokens.length === 0) return { sent: false, reason: "no_tokens" as const };
 
-  const appUrl = getAppUrl();
-  const link = appUrl
-    ? `${appUrl}/admin/pedidos?pedido=${encodeURIComponent(order.id)}`
-    : `/admin/pedidos?pedido=${encodeURIComponent(order.id)}`;
+  const link = `/admin/pedidos?pedido=${encodeURIComponent(order.id)}`;
   const response = await getAdminMessaging().sendEachForMulticast({
     tokens: tokens.map((item) => item.token),
-    notification: {
+    data: {
       title: "Nuevo pedido pagado",
       body: `Pedido #${getOrderFolio(order)} por ${money(order.total)} MXN`,
-    },
-    webpush: {
-      fcmOptions: {
-        link,
-      },
-      notification: {
-        icon: "/window.svg",
-        badge: "/window.svg",
-      },
-    },
-    data: {
       orderId: order.id,
       url: link,
       type: "paid_order",
+      tag: `charly-alexa-order-${order.id}`,
+      icon: "/window.svg",
+      badge: "/window.svg",
     },
   });
-  const batch = firestore.batch();
+  const invalidated = await deactivateInvalidTokens(
+    tokens,
+    response.responses
+  );
 
-  response.responses.forEach((item, index) => {
-    if (!item.success && isInvalidMessagingToken(item.error?.code)) {
-      batch.set(
-        firestore.collection(TOKENS_COLLECTION).doc(tokens[index].id),
-        {
-          active: false,
-          invalidatedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
-  });
-
-  await batch.commit();
-  return { sent: response.successCount > 0 };
+  return {
+    sent: response.successCount > 0,
+    reason:
+      response.successCount > 0
+        ? "sent"
+        : invalidated > 0
+          ? "invalid_tokens"
+          : "push_failed",
+    invalidated,
+  };
 }
 
 export async function sendAdminTestNotification(uid: string, token?: string) {
   const firestore = getAdminFirestore();
-  let tokens: string[] = [];
+  let tokens: StoredAdminToken[] = [];
 
   if (token) {
     const snapshot = await firestore
       .collection(TOKENS_COLLECTION)
-      .where("uid", "==", uid)
-      .where("token", "==", token)
-      .where("active", "==", true)
-      .limit(1)
+      .doc(tokenDocId(token))
       .get();
-    tokens = snapshot.docs.map((doc) => String(doc.data().token ?? ""));
+    const data = snapshot.data();
+
+    if (snapshot.exists && data?.uid === uid && data.active === true) {
+      tokens = [{ id: snapshot.id, token: String(data.token ?? "") }];
+    }
   } else {
     const snapshot = await firestore
       .collection(TOKENS_COLLECTION)
       .where("uid", "==", uid)
-      .where("active", "==", true)
       .get();
-    tokens = snapshot.docs.map((doc) => String(doc.data().token ?? ""));
+    tokens = snapshot.docs
+      .filter((doc) => doc.data().active === true)
+      .map((doc) => ({ id: doc.id, token: String(doc.data().token ?? "") }));
   }
 
-  tokens = tokens.filter(Boolean);
+  tokens = tokens.filter((item) => item.token);
   if (tokens.length === 0) return { sent: false, reason: "no_tokens" as const };
 
-  const appUrl = getAppUrl();
-  const link = appUrl ? `${appUrl}/admin/pedidos` : "/admin/pedidos";
+  const link = "/admin/pedidos";
   const response = await getAdminMessaging().sendEachForMulticast({
-    tokens,
-    notification: {
-      title: "Notificacion de prueba",
-      body: "Las notificaciones de pedidos estan activas.",
-    },
-    webpush: {
-      fcmOptions: { link },
-      notification: {
-        icon: "/window.svg",
-        badge: "/window.svg",
-      },
-    },
+    tokens: tokens.map((item) => item.token),
     data: {
+      title: "Notificaciones activadas",
+      body:
+        "Este dispositivo recibira avisos de nuevos pedidos de Charly Alexa.",
       type: "test",
       url: link,
+      tag: "charly-alexa-test",
+      icon: "/window.svg",
+      badge: "/window.svg",
     },
   });
+  const invalidated = await deactivateInvalidTokens(
+    tokens,
+    response.responses
+  );
 
-  return { sent: response.successCount > 0 };
+  return {
+    sent: response.successCount > 0,
+    reason:
+      response.successCount > 0
+        ? ("sent" as const)
+        : invalidated > 0
+          ? ("invalid_token" as const)
+          : ("push_failed" as const),
+    invalidated,
+  };
 }
