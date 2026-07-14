@@ -1,36 +1,58 @@
+import "server-only";
+
 import {
-  applicationDefault,
   cert,
   getApps,
   initializeApp,
+  type App,
 } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 
+let adminApp: App | undefined;
+
+function getFirebaseAdminCredentials() {
+  const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID?.trim();
+  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL?.trim();
+  const rawPrivateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY;
+  const missingVariables = [
+    ["FIREBASE_ADMIN_PROJECT_ID", projectId],
+    ["FIREBASE_ADMIN_CLIENT_EMAIL", clientEmail],
+    ["FIREBASE_ADMIN_PRIVATE_KEY", rawPrivateKey],
+  ]
+    .filter(([, value]) => !value?.trim())
+    .map(([name]) => name);
+
+  if (missingVariables.length > 0) {
+    throw new Error(
+      `Faltan credenciales de Firebase Admin: ${missingVariables.join(", ")}.`
+    );
+  }
+
+  return {
+    projectId: projectId as string,
+    clientEmail: clientEmail as string,
+    privateKey: (rawPrivateKey as string).replace(/\\n/g, "\n").trim(),
+  };
+}
+
 function getAdminApp() {
+  if (adminApp) return adminApp;
+
   const existingApp = getApps()[0];
-  if (existingApp) return existingApp;
+  if (existingApp) {
+    adminApp = existingApp;
+    return adminApp;
+  }
 
-  const projectId =
-    process.env.FIREBASE_ADMIN_PROJECT_ID ||
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
-    process.env.GOOGLE_CLOUD_PROJECT ||
-    process.env.GCLOUD_PROJECT;
-  const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(
-    /\\n/g,
-    "\n"
-  );
-  const credential =
-    projectId && clientEmail && privateKey
-      ? cert({ projectId, clientEmail, privateKey })
-      : applicationDefault();
-
-  return initializeApp({
-    credential,
-    ...(projectId ? { projectId } : {}),
+  const credentials = getFirebaseAdminCredentials();
+  adminApp = initializeApp({
+    credential: cert(credentials),
+    projectId: credentials.projectId,
   });
+
+  return adminApp;
 }
 
 export function getAdminAuth() {

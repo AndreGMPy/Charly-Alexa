@@ -9,8 +9,18 @@ export async function requireAdminFromRequest(request: Request) {
 
   if (!token) return null;
 
-  const decoded = await getAdminAuth().verifyIdToken(token);
-  if (decoded.admin !== true) return null;
+  try {
+    const decoded = await getAdminAuth().verifyIdToken(token);
+    if (decoded.admin !== true) return null;
 
-  return decoded;
+    return decoded;
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+
+    if (code.startsWith("auth/")) return null;
+    throw error;
+  }
 }

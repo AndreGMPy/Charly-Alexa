@@ -8,7 +8,7 @@ import {
   unregisterFirebaseMessagingServiceWorker,
 } from "@/lib/firebase-messaging-client";
 import { app, auth, isFirebaseConfigured } from "@/lib/firebase";
-import { logErrorInDevelopment } from "@/lib/safe-errors";
+import { logWarningInDevelopment } from "@/lib/safe-errors";
 import { onAuthStateChanged } from "firebase/auth";
 import { deleteToken, onMessage } from "firebase/messaging";
 import {
@@ -186,7 +186,7 @@ export default function AdminNotificationSettings() {
         setErrorMessage(
           "No fue posible activar las notificaciones. Recarga la pagina e intentalo nuevamente."
         );
-        logErrorInDevelopment("Notification activation error", error);
+        logWarningInDevelopment("Notification activation warning", error);
         if (showSuccess) {
           toast.error(
             "No fue posible activar las notificaciones. Recarga la pagina e intentalo nuevamente."
@@ -229,7 +229,7 @@ export default function AdminNotificationSettings() {
     void checkInitialState().catch((error) => {
       if (cancelled) return;
       setState("error");
-      logErrorInDevelopment("Notification support check error", error);
+      logWarningInDevelopment("Notification support check warning", error);
     });
 
     return () => {
@@ -280,7 +280,10 @@ export default function AdminNotificationSettings() {
     }
 
     void listenForForegroundMessages().catch((error) => {
-      logErrorInDevelopment("Foreground notification listener error", error);
+      logWarningInDevelopment(
+        "Foreground notification listener warning",
+        error
+      );
     });
 
     return () => {
@@ -320,7 +323,7 @@ export default function AdminNotificationSettings() {
       toast.success("Notificacion de prueba enviada.");
     } catch (error) {
       setTestMessage("No fue posible enviar la notificacion de prueba.");
-      logErrorInDevelopment("Test notification error", error);
+      logWarningInDevelopment("Test notification warning", error);
       toast.error("No fue posible enviar la notificacion de prueba.");
     } finally {
       testInProgress.current = false;
@@ -363,7 +366,7 @@ export default function AdminNotificationSettings() {
       toast.success("Configuracion de notificaciones reiniciada.");
     } catch (error) {
       setErrorMessage("No fue posible reiniciar las notificaciones.");
-      logErrorInDevelopment("Notification reset error", error);
+      logWarningInDevelopment("Notification reset warning", error);
       toast.error("No fue posible reiniciar las notificaciones.");
     } finally {
       setIsResetting(false);

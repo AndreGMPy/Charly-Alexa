@@ -23,6 +23,23 @@ export function logErrorInDevelopment(context: string, error: unknown) {
   console.error(context, error);
 }
 
+export function logWarningInDevelopment(context: string, error: unknown) {
+  if (process.env.NODE_ENV !== "development") return;
+
+  if (error instanceof FirebaseError) {
+    console.warn(context, {
+      code: error.code,
+      message: error.message,
+    });
+    return;
+  }
+
+  console.warn(
+    context,
+    error instanceof Error ? { name: error.name, message: error.message } : error
+  );
+}
+
 export function getSafeLoginErrorMessage(error: unknown) {
   if (error instanceof FirebaseError) {
     if (invalidCredentialCodes.has(error.code)) {
